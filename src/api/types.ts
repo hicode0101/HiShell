@@ -1,0 +1,138 @@
+/** HiShell 前后端共享数据模型（与 docs/hishell-设计方案.md §5 对齐） */
+
+/* ---------- 文件系统 ---------- */
+
+export type FileKind = 'dir' | 'file' | 'symlink'
+
+export interface DirEntry {
+  name: string
+  kind: FileKind
+  size: number
+  /** 毫秒时间戳 */
+  mtime: number
+  /** 远程文件权限串（如 drwxr-xr-x），本地为空 */
+  attrs?: string
+}
+
+export type SpecialDirKind =
+  | 'home'
+  | 'desktop'
+  | 'documents'
+  | 'downloads'
+  | 'pictures'
+  | 'music'
+  | 'videos'
+
+/* ---------- 连接配置 ---------- */
+
+export type AuthKind = 'password' | 'publicKey' | 'keyboardInteractive' | 'agent' | 'auto'
+
+export type ProxyConfig =
+  | { kind: 'none' }
+  | { kind: 'socks5'; host: string; port: number; username?: string; password?: string }
+  | { kind: 'http'; host: string; port: number; username?: string; password?: string }
+  | { kind: 'jump'; profileId: string }
+  | { kind: 'proxyCommand'; command: string }
+
+export interface SshProfile {
+  id: string
+  name: string
+  host: string
+  port: number
+  username: string
+  auth: AuthKind
+  password: string
+  /** 后端已存凭据标记（keyring） */
+  hasStoredPassword?: boolean
+  hasStoredPassphrase?: boolean
+  privateKeyPath: string
+  privateKeyPassphrase: string
+  proxy: ProxyConfig
+  keepaliveInterval: number
+  keepaliveCountMax: number
+  connectTimeout: number
+  term: string
+  forwardedPorts: ForwardRule[]
+  behaviorOnSessionEnd: 'reconnect' | 'keep' | 'close'
+}
+
+export interface ForwardRule {
+  id: string
+  type: 'local' | 'remote' | 'dynamic'
+  bindHost: string
+  bindPort: number
+  targetHost?: string
+  targetPort?: number
+  description?: string
+}
+
+export function defaultProfile(partial: Partial<SshProfile> = {}): SshProfile {
+  return {
+    id: `profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: '新建连接',
+    host: '',
+    port: 22,
+    username: 'root',
+    auth: 'password',
+    password: '',
+    privateKeyPath: '',
+    privateKeyPassphrase: '',
+    proxy: { kind: 'none' },
+    keepaliveInterval: 5000,
+    keepaliveCountMax: 10,
+    connectTimeout: 10000,
+    term: 'xterm-256color',
+    forwardedPorts: [],
+    behaviorOnSessionEnd: 'keep',
+    ...partial,
+  }
+}
+
+/* ---------- 会话 ---------- */
+
+export type SessionStatus = 'connecting' | 'connected' | 'disconnected'
+export type ViewMode = 'terminal' | 'sftp'
+
+export interface SessionTab {
+  id: string
+  kind: 'session' | 'settings'
+  title: string
+  address: string
+  profileId?: string
+  /** 后端会话 id（tauri 环境） */
+  sid?: number
+  status: SessionStatus
+  /** 断开/失败原因（后端推送） */
+  statusMessage?: string
+  viewMode: ViewMode
+  cols: number
+  rows: number
+}
+
+/* ---------- 传输队列 ---------- */
+
+export type TransferStatus = 'queued' | 'running' | 'paused' | 'done' | 'cancelled' | 'failed'
+export type TransferDirection = 'upload' | 'download'
+
+export interface TransferItem {
+  id: string
+  name: string
+  direction: TransferDirection
+  localPath: string
+  remotePath: string
+  total: number
+  transferred: number
+  /** bytes/s */
+  speed: number
+  startedAt: number
+  elapsedMs: number
+  status: TransferStatus
+}
+
+/* ---------- 快捷连接 ---------- */
+
+export interface QuickConnectInfo {
+  username: string
+  host: string
+  port: number
+}

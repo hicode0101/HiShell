@@ -1,0 +1,109 @@
+/**
+ * HiShell — Win11 Fluent Design 设计 token
+ * 浅/深双主题，通过 html[data-theme] 切换；Mica 底色由 Tauri windowEffects 提供。
+ */
+
+:root,
+html[data-theme='light'] {
+  /* 背景层 */
+  --bg-base: #f3f3f3;
+  --bg-layer: #f9f9f9;
+  --bg-card: #ffffff;
+  --bg-alt-hover: rgba(0, 0, 0, 0.045);
+  --bg-alt-pressed: rgba(0, 0, 0, 0.08);
+  --bg-selected: rgba(0, 0, 0, 0.055);
+  --bg-smoke: rgba(255, 255, 255, 0.7);   /* 浮层遮罩 */
+
+  /* 描边 */
+  --stroke-card: rgba(0, 0, 0, 0.07);
+  --stroke-divider: rgba(0, 0, 0, 0.085);
+  --stroke-strong: rgba(0, 0, 0, 0.28);
+  --stroke-control: rgba(0, 0, 0, 0.14);
+  --stroke-focus: #1a1a1a;
+
+  /* 文本 */
+  --text-primary: #1a1a1a;
+  --text-secondary: rgba(0, 0, 0, 0.62);
+  --text-tertiary: rgba(0, 0, 0, 0.45);
+  --text-disabled: rgba(0, 0, 0, 0.36);
+  --text-on-accent: #ffffff;
+
+  /* 主题色 */
+  --accent: #005fb8;
+  --accent-hover: #1975c5;
+  --accent-pressed: #004578;
+  --accent-light: #ebf3fc;
+  --accent-text-on: #ffffff;
+
+  /* 语义色 */
+  --success: #0f7b0f;
+  --warning: #9d5d00;
+  --danger: #c42b1c;
+  --danger-hover: #d13438;
+
+  /* 终端（浅色主题下终端仍偏深底，遵循惯例） */
+  --term-bg: #0c0c0c;
+  --term-fg: #cccccc;
+
+  /* 阴影 */
+  --shadow-flyout: 0 8px 16px rgba(0, 0, 0, 0.14);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.19), 0 2px 21px rgba(0, 0, 0, 0.15);
+
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+html[data-theme='dark'] {
+  --bg-base: #202020;
+  --bg-layer: #272727;
+  --bg-card: #2d2d2d;
+  --bg-alt-hover: rgba(255, 255, 255, 0.06);
+  --bg-alt-pressed: rgba(255, 255, 255, 0.035);
+  --bg-selected: rgba(255, 255, 255, 0.08);
+  --bg-smoke: rgba(0, 0, 0, 0.5);
+
+  --stroke-card: rgba(255, 255, 255, 0.08);
+  --stroke-divider: rgba(255, 255, 255, 0.09);
+  --stroke-strong: rgba(255, 255, 255, 0.45);
+  --stroke-control: rgba(255, 255, 255, 0.16);
+  --stroke-focus: #ffffff;
+
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.78);
+  --text-tertiary: rgba(255, 255, 255, 0.55);
+  --text-disabled: rgba(255, 255, 255, 0.36);
+  --text-on-accent: #003e92;
+
+  --accent: #4cc2ff;
+  --accent-hover: #59ccff;
+  --accent-pressed: #43b5e5;
+  --accent-light: rgba(76, 194, 255, 0.12);
+  --accent-text-on: #003e92;
+
+  --success: #6ccb5f;
+  --warning: #fcc02d;
+  --danger: #ff99a4;
+  --danger-hover: #ff8592;
+
+  --term-bg: #0c0c0c;
+  --term-fg: #cccccc;
+
+  --shadow-flyout: 0 8px 16px rgba(0, 0, 0, 0.44);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.55), 0 2px 21px rgba(0, 0, 0, 0.37);
+}
+
+/* 主题色覆盖（设置页选择 accent 时写入） */
+:root {
+  --accent-override: initial;
+}
+
+/* Tauri 桌面环境：透出 Mica/Acrylic 窗口材质（html 背景改为半透明） */
+html.env-tauri,
+html.env-tauri[data-theme='light'] {
+  --bg-base: rgba(243, 243, 243, 0.72);
+}
+html.env-tauri[data-theme='dark'] {
+  --bg-base: rgba(32, 32, 32, 0.72);
+}
