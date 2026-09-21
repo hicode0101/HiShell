@@ -5,6 +5,7 @@ import { useProfilesStore } from '../../stores/profiles'
 import { useSessionsStore } from '../../stores/sessions'
 import { defaultProfile, type AuthKind, type ProxyConfig, type SshProfile } from '../../api/types'
 import { isTauri } from '../../api/adapter'
+import { sshTest } from '../../api/backend'
 import { t } from '../../i18n'
 
 const sessions = useSessionsStore()
@@ -20,6 +21,7 @@ const authKind = ref<AuthKind>('password')
 const proxyKind = ref<'none' | 'socks5' | 'http' | 'jump' | 'proxyCommand'>('none')
 const socks = reactive({ host: '127.0.0.1', port: 1080, username: '', password: '' })
 const http = reactive({ host: '127.0.0.1', port: 8080, username: '', password: '' })
+const proxyCmd = reactive({ command: '' })
 const jumpProfileId = ref('')
 const testing = ref(false)
 
@@ -55,7 +57,7 @@ const proxyOptions = computed(() => [
   { label: t('connect.proxySocks5'), value: 'socks5' },
   { label: t('connect.proxyHttp'), value: 'http' },
   { label: t('connect.proxyJump'), value: 'jump' },
-  { label: t('connect.proxyCommand'), value: 'proxyCommand', disabled: true },
+  { label: t('connect.proxyCommand'), value: 'proxyCommand' },
 ])
 
 const jumpOptions = computed(() =>
@@ -89,6 +91,8 @@ function buildProxy(): ProxyConfig {
       )
       return { kind: 'jump', profileId: target?.id ?? '' }
     }
+    case 'proxyCommand':
+      return { kind: 'proxyCommand', command: proxyCmd.command }
     default:
       return { kind: 'none' }
   }
@@ -106,6 +110,9 @@ function fillFormForEdit() {
     proxyKind.value = 'jump'
     const target = profilesStore.byId(p.profileId)
     jumpProfileId.value = target ? `${target.name}（${target.username}@${target.host}:${target.port}）` : ''
+  } else if (p.kind === 'proxyCommand') {
+    proxyKind.value = 'proxyCommand'
+    proxyCmd.command = p.command ?? ''
   } else {
     proxyKind.value = 'none'
   }
@@ -129,10 +136,28 @@ async function pickPrivateKey() {
 }
 
 async function testConnection() {
+  if (!form.host) {
+    toast(t('connect.hostRequired'), 'error')
+    return
+  }
+  if (!isTauri) {
+    toast(t('connect.testOk'))
+    return
+  }
   testing.value = true
-  await new Promise((r) => setTimeout(r, 900))
-  testing.value = false
-  toast(t('connect.testOk'), 'success')
+  try {
+    form.auth = authKind.value
+    form.proxy = buildProxy()
+    const r = await sshTest(JSON.parse(JSON.stringify(form)), {
+      password: form.password || undefined,
+      passphrase: form.privateKeyPassphrase || undefined,
+    })
+    toast(r.message, r.ok ? 'success' : 'error')
+  } catch (e) {
+    toast(String(e), 'error')
+  } finally {
+    testing.value = false
+  }
 }
 
 function saveProfile() {
@@ -237,6 +262,12 @@ function connectNow() {
         <FComboBox v-model="jumpProfileId" :options="jumpOptions" :placeholder="t('connect.jumpPlaceholder')" />
         <span class="cd-label">{{ t('connect.hint') }}</span>
         <span class="cd-hint">{{ t('connect.jumpHint') }}</span>
+      </div>
+      <div v-else-if="proxyKind === 'proxyCommand'" class="cd-grid cd-proxy-fields">
+        <span class="cd-label">{{ t('connect.proxyCommand') }}</span>
+        <FTextBox v-model="proxyCmd.command" :placeholder="t('connect.proxyCommandPlaceholder')" />
+        <span class="cd-label">{{ t('connect.hint') }}</span>
+        <span class="cd-hint">{{ t('connect.proxyCommandHint') }}</span>
       </div>
     </div>
 

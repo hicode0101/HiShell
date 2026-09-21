@@ -1,7 +1,7 @@
 /** 会话标签状态：多标签、激活、视图模式、连接状态机（tauri 真实连接 / mock 模拟） */
 import { defineStore } from 'pinia'
 import { isTauri } from '../api/adapter'
-import { sshConnect, sshDisconnect } from '../api/backend'
+import { localStart, localStop, sshConnect, sshDisconnect } from '../api/backend'
 import type { SessionTab, SshProfile, ViewMode } from '../api/types'
 import { t } from '../i18n'
 
@@ -148,6 +148,37 @@ export const useSessionsStore = defineStore('sessions', {
         this.pendingStatus[sid] = { status, message }
       }
     },
+    /** 由 local-status 事件驱动（本地终端进程退出） */
+    setStatusByLid(lid: number, status: SessionTab['status'], message?: string) {
+      const tab = this.tabs.find((x) => x.lid === lid)
+      if (tab) {
+        tab.status = status
+        if (message) tab.statusMessage = message
+      }
+    },
+    /** 新建本地终端标签：tauri 走 local_start（PTY），浏览器 mock 模拟 shell */
+    createLocalTab(): SessionTab {
+      const raw = makeTab({
+        kind: 'local',
+        title: t('tabs.localTerminal'),
+        address: 'local',
+        status: 'connected',
+      })
+      this.tabs.push(raw)
+      const tab = this.tabs[this.tabs.length - 1] as SessionTab
+      this.activeTabId = tab.id
+      if (isTauri) {
+        localStart()
+          .then((lid) => {
+            tab.lid = lid
+          })
+          .catch((e) => {
+            tab.status = 'disconnected'
+            tab.statusMessage = String(e)
+          })
+      }
+      return tab
+    },
     /** 推入后端提示（key 由后端下发，应答时原样带回） */
     pushPrompt(sid: number, payload: Record<string, unknown>): string {
       const key = (payload.key as string) ?? `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -178,6 +209,9 @@ export const useSessionsStore = defineStore('sessions', {
       // 断开后端会话（fire-and-forget）
       if (tab.sid !== undefined && isTauri) {
         sshDisconnect(tab.sid).catch(() => {})
+      }
+      if (tab.lid !== undefined && isTauri) {
+        localStop(tab.lid).catch(() => {})
       }
       const wasActive = this.activeTabId === id
       this.tabs.splice(idx, 1)

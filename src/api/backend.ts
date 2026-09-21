@@ -51,12 +51,62 @@ export interface TransferDoneEvent {
   ok: boolean
   error?: string
 }
+/** 本地终端数据/状态事件 */
+export interface LocalDataEvent {
+  lid: number
+  data: string
+}
+export interface LocalStatusEvent {
+  lid: number
+  status: 'exited'
+}
+/** 会话导入候选项（Xshell / Tabby） */
+export interface ImportCandidate {
+  source: 'xshell' | 'tabby'
+  name: string
+  host: string
+  port: number
+  username: string
+  auth: 'password' | 'publicKey' | 'keyboardInteractive'
+  privateKeyPath: string
+  originPath: string
+}
+export interface ImportApplyResult {
+  imported: number
+  skipped: number
+}
 
 /* ==================== 本地文件系统 ==================== */
 
 export async function listLocalDir(path: string): Promise<DirEntry[]> {
   if (isTauri) return tauriInvoke<DirEntry[]>('fs_list_dir', { path })
   return mockListDir(path)
+}
+
+/* 本地文件操作（右键菜单：重命名/删除/新建文件夹/属性/打开） */
+export async function fsRename(oldPath: string, newPath: string): Promise<void> {
+  return tauriInvoke<void>('fs_rename', { oldPath, newPath })
+}
+export async function fsDelete(path: string): Promise<void> {
+  return tauriInvoke<void>('fs_delete', { path })
+}
+export async function fsMkdir(path: string): Promise<void> {
+  return tauriInvoke<void>('fs_mkdir', { path })
+}
+export interface FileStat {
+  name: string
+  kind: 'dir' | 'file' | 'symlink'
+  size: number
+  mtime: number
+  attrs: string
+  readonly: boolean
+}
+export async function fsStat(path: string): Promise<FileStat> {
+  return tauriInvoke<FileStat>('fs_stat', { path })
+}
+/** 用系统默认程序打开本地文件/文件夹 */
+export async function openPath(path: string): Promise<void> {
+  return tauriInvoke<void>('open_path', { path })
 }
 
 export async function specialDir(kind: string): Promise<string> {
@@ -67,6 +117,16 @@ export async function specialDir(kind: string): Promise<string> {
 export async function appInfo(): Promise<{ name: string; version: string; mode: string }> {
   if (isTauri) return tauriInvoke('app_info')
   return { name: 'HiShell', version: '0.1.0', mode: '浏览器预览 (mock)' }
+}
+
+/** 在系统文件管理器中打开配置目录 */
+export async function openConfigDir(): Promise<void> {
+  if (isTauri) return tauriInvoke<void>('open_config_dir')
+  toastMockOnly()
+}
+
+function toastMockOnly() {
+  /* 浏览器预览模式无后端，忽略 */
 }
 
 /* ==================== 连接配置 ==================== */
@@ -122,6 +182,24 @@ export async function sshPromptResponse(
   return tauriInvoke<void>('ssh_prompt_response', { sid, answer: { key, value } })
 }
 
+export interface TestResult {
+  ok: boolean
+  authenticated: boolean
+  message: string
+}
+
+/** 测试连接：真实握手 + 认证尝试（不弹窗、不保存主机密钥变更） */
+export async function sshTest(
+  profile: SshProfile,
+  credentials?: { password?: string; passphrase?: string },
+): Promise<TestResult> {
+  return tauriInvoke<TestResult>('ssh_test', {
+    profile,
+    password: credentials?.password ?? null,
+    passphrase: credentials?.passphrase ?? null,
+  })
+}
+
 export function bytesToB64(bytes: Uint8Array): string {
   let bin = ''
   const CHUNK = 0x8000
@@ -148,12 +226,33 @@ export async function sftpMkdir(sid: number, path: string): Promise<void> {
   return tauriInvoke<void>('sftp_mkdir', { sid, path })
 }
 
+export async function sftpMkdirs(sid: number, paths: string[]): Promise<void> {
+  return tauriInvoke<void>('sftp_mkdirs', { sid, paths })
+}
+
 export async function sftpRm(sid: number, path: string): Promise<void> {
   return tauriInvoke<void>('sftp_rm', { sid, path })
 }
 
 export async function sftpRename(sid: number, path: string, newPath: string): Promise<void> {
   return tauriInvoke<void>('sftp_rename', { sid, path, newPath })
+}
+
+/** 更改远程权限（八进制 mode 如 0o644；目录可递归）。返回实际修改的条目数 */
+export async function sftpChmod(sid: number, path: string, mode: number, recursive: boolean): Promise<number> {
+  return tauriInvoke<number>('sftp_chmod', { sid, path, mode, recursive })
+}
+
+export interface RemoteStat {
+  name: string
+  kind: 'dir' | 'file' | 'symlink'
+  size: number
+  mtime: number
+  attrs?: string
+}
+
+export async function sftpStat(sid: number, path: string): Promise<RemoteStat> {
+  return tauriInvoke<RemoteStat>('sftp_stat', { sid, path })
 }
 
 /* ==================== 传输 ==================== */
@@ -165,6 +264,8 @@ export interface EnqueueItem {
   size: number
   localPath: string
   remotePath: string
+  /** 断点续传：从目标端已有偏移继续 */
+  resume?: boolean
 }
 
 export interface Enqueued {
@@ -216,6 +317,57 @@ export interface ForwardStatus {
 
 export async function forwardList(sid: number): Promise<ForwardStatus[]> {
   return tauriInvoke<ForwardStatus[]>('forward_list', { sid })
+}
+
+/* ==================== 会话导入（Xshell / Tabby） ==================== */
+
+export async function importScan(): Promise<ImportCandidate[]> {
+  if (isTauri) return tauriInvoke<ImportCandidate[]>('import_scan')
+  return []
+}
+
+export async function importApply(candidates: ImportCandidate[]): Promise<ImportApplyResult> {
+  if (isTauri) return tauriInvoke<ImportApplyResult>('import_apply', { candidates })
+  return { imported: 0, skipped: 0 }
+}
+
+/* ==================== 用户密钥管理 ==================== */
+
+export interface UserKeyInfo {
+  name: string
+  keyType: string
+  bits: number
+  comment: string
+  fingerprint: string
+  publicPath: string
+  privatePath?: string
+}
+
+export async function userKeyList(): Promise<UserKeyInfo[]> {
+  if (isTauri) return tauriInvoke<UserKeyInfo[]>('user_key_list')
+  return []
+}
+
+export async function userKeyDelete(publicPath: string, privatePath?: string): Promise<void> {
+  return tauriInvoke<void>('user_key_delete', { publicPath, privatePath: privatePath ?? null })
+}
+
+/* ==================== 本地终端（PTY） ==================== */
+
+export async function localStart(): Promise<number> {
+  return tauriInvoke<number>('local_start')
+}
+
+export async function localWrite(lid: number, bytes: Uint8Array): Promise<void> {
+  return tauriInvoke<void>('local_write', { lid, data: bytesToB64(bytes) })
+}
+
+export async function localResize(lid: number, cols: number, rows: number): Promise<void> {
+  return tauriInvoke<void>('local_resize', { lid, cols, rows })
+}
+
+export async function localStop(lid: number): Promise<void> {
+  return tauriInvoke<void>('local_stop', { lid })
 }
 
 /* ==================== Mock 实现（浏览器预览） ==================== */

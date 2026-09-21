@@ -18,10 +18,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Sessions(std::sync::Arc::new(ssh::SessionManager::new())))
         .manage(Transfers(std::sync::Arc::new(ssh::TransferManager::new())))
+        .manage(commands::local::LocalManager::default())
         .invoke_handler(tauri::generate_handler![
             commands::fs::fs_list_dir,
             commands::fs::fs_special_dir,
+            commands::fs::fs_rename,
+            commands::fs::fs_delete,
+            commands::fs::fs_mkdir,
+            commands::fs::fs_stat,
+            commands::fs::open_path,
             commands::app::app_info,
+            commands::app::open_config_dir,
             commands::profiles::profile_list,
             commands::profiles::profile_get,
             commands::profiles::profile_save,
@@ -31,10 +38,12 @@ pub fn run() {
             commands::ssh::ssh_write,
             commands::ssh::ssh_resize,
             commands::ssh::ssh_disconnect,
+            commands::ssh::ssh_test,
             commands::sftp::sftp_list,
             commands::sftp::sftp_mkdir,
             commands::sftp::sftp_rm,
             commands::sftp::sftp_rename,
+            commands::sftp::sftp_chmod,
             commands::sftp::sftp_stat,
             commands::sftp::sftp_exists,
             commands::sftp::sftp_mkdirs,
@@ -46,6 +55,14 @@ pub fn run() {
             commands::forwards::forward_add,
             commands::forwards::forward_remove,
             commands::forwards::forward_list,
+            commands::import::import_scan,
+            commands::import::import_apply,
+            commands::userkeys::user_key_list,
+            commands::userkeys::user_key_delete,
+            commands::local::local_start,
+            commands::local::local_write,
+            commands::local::local_resize,
+            commands::local::local_stop,
         ])
         .run(tauri::generate_context!())
         .expect("HiShell 启动失败");

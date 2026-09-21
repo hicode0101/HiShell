@@ -1,5 +1,45 @@
 <script setup lang="ts">
-import { contextMenuState } from './contextMenu'
+/**
+ * 全局右键菜单宿主。关闭时机（对齐 Windows 原生菜单习惯）：
+ * - 在菜单外按下任意鼠标键（左键/右键/中键）→ 关闭；左键点击同时穿透到底下 UI 正常生效
+ * - 点菜单项 → 执行并关闭（菜单项自身处理）
+ * - Esc / 滚轮 / 窗口失焦 → 关闭
+ */
+import { onMounted, onUnmounted } from 'vue'
+import { contextMenuState, hideContextMenu } from './contextMenu'
+
+function onDocMouseDown(e: MouseEvent) {
+  if (!contextMenuState.open) return
+  const menu = document.getElementById('f-context-menu')
+  if (menu && menu.contains(e.target as Node)) return
+  hideContextMenu()
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && contextMenuState.open) hideContextMenu()
+}
+
+function onWheel() {
+  if (contextMenuState.open) hideContextMenu()
+}
+
+function onBlur() {
+  if (contextMenuState.open) hideContextMenu()
+}
+
+onMounted(() => {
+  // capture：先于页面内任何 stopPropagation 处理，保证一定能收到
+  document.addEventListener('mousedown', onDocMouseDown, true)
+  document.addEventListener('keydown', onKeydown)
+  window.addEventListener('wheel', onWheel, { passive: true })
+  window.addEventListener('blur', onBlur)
+})
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onDocMouseDown, true)
+  document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('wheel', onWheel)
+  window.removeEventListener('blur', onBlur)
+})
 </script>
 
 <template>
@@ -12,6 +52,7 @@ import { contextMenuState } from './contextMenu'
       top: contextMenuState.y + 'px',
       display: contextMenuState.open ? 'block' : 'none',
     }"
+    @contextmenu.prevent
   >
     <div class="f-ctx-menu">
       <template v-for="(item, i) in contextMenuState.items" :key="i">

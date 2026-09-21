@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useSettingsStore, ACCENT_PRESETS } from '../stores/settings'
+import { useSettingsStore, ACCENT_PRESETS, type TerminalColorScheme } from '../stores/settings'
 import { FButton, FComboBox, toast } from '../ui'
 import { appInfo } from '../api/backend'
 import { t, languageCode, systemLanguageCode, type LangPref } from '../i18n'
@@ -63,6 +63,21 @@ const fontSizes = ['12', '13', '14', '15', '16', '18', '20']
 const fontSizeModel = computed({
   get: () => String(settings.s.terminalFontSize),
   set: (v: string) => settings.patch({ terminalFontSize: Number(v) || 14 }),
+})
+
+/* 终端配色方案 */
+const SCHEMES: { value: TerminalColorScheme; label: () => string }[] = [
+  { value: 'dark', label: () => t('settings.termSchemeDark') },
+  { value: 'light', label: () => t('settings.termSchemeLight') },
+  { value: 'followApp', label: () => t('settings.termSchemeFollow') },
+]
+const schemeLabels = computed(() => SCHEMES.map((s) => s.label()))
+const schemeModel = computed({
+  get: () => SCHEMES.find((s) => s.value === settings.s.terminalColorScheme)?.label() ?? SCHEMES[0]!.label(),
+  set: (label: string) => {
+    const s = SCHEMES.find((x) => x.label() === label)
+    if (s) settings.patch({ terminalColorScheme: s.value })
+  },
 })
 </script>
 
@@ -138,6 +153,8 @@ const fontSizeModel = computed({
             <FComboBox v-model="fontModel" :options="fontLabels" />
             <span class="sv-label">{{ t('settings.fontSize') }}</span>
             <FComboBox v-model="fontSizeModel" :options="fontSizes" />
+            <span class="sv-label">{{ t('settings.colorScheme') }}</span>
+            <FComboBox v-model="schemeModel" :options="schemeLabels" />
           </div>
         </div>
         <div class="sv-block">

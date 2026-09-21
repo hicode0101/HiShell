@@ -42,57 +42,59 @@ const proxyBadge = computed(() => {
 </script>
 
 <template>
-  <div class="session-toolbar" v-if="isSession">
-    <div class="view-switch">
-      <button
-        class="vs-btn"
-        :class="{ on: tab.viewMode === 'terminal' }"
-        :title="t('common.terminal')"
-        @click="cmd('view-terminal')"
-      >
-        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-          <rect x="3" y="4.5" width="14" height="11" rx="1.5" /><path d="M6.5 8l2.8 2.3-2.8 2.3M11.2 13h3" />
-        </svg>
-        {{ t('sessionToolbar.terminal') }}
-      </button>
-      <button
-        class="vs-btn"
-        :class="{ on: tab.viewMode === 'sftp' }"
-        :title="t('sessionToolbar.fileViewShortcut')"
-        @click="cmd('view-sftp')"
-      >
+  <div class="session-toolbar" v-if="tab.kind !== 'settings'">
+    <template v-if="isSession">
+      <div class="view-switch">
+        <button
+          class="vs-btn"
+          :class="{ on: tab.viewMode === 'terminal' }"
+          :title="t('common.terminal')"
+          @click="cmd('view-terminal')"
+        >
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <rect x="3" y="4.5" width="14" height="11" rx="1.5" /><path d="M6.5 8l2.8 2.3-2.8 2.3M11.2 13h3" />
+          </svg>
+          {{ t('sessionToolbar.terminal') }}
+        </button>
+        <button
+          class="vs-btn"
+          :class="{ on: tab.viewMode === 'sftp' }"
+          :title="t('sessionToolbar.fileViewShortcut')"
+          @click="cmd('view-sftp')"
+        >
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 6.3c0-.7.6-1.3 1.3-1.3h3l1.8 1.8h5.6c.7 0 1.3.6 1.3 1.3v7.6c0 .7-.6 1.3-1.3 1.3H4.8c-.7 0-1.3-.6-1.3-1.3V6.3z" />
+          </svg>
+          {{ t('sessionToolbar.files') }}
+        </button>
+      </div>
+
+      <div class="st-divider" />
+
+      <button class="st-btn" :title="t('ports.dialogTitle')" @click="cmd('ports-manager')">
         <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3.5 6.3c0-.7.6-1.3 1.3-1.3h3l1.8 1.8h5.6c.7 0 1.3.6 1.3 1.3v7.6c0 .7-.6 1.3-1.3 1.3H4.8c-.7 0-1.3-.6-1.3-1.3V6.3z" />
+          <path d="M8 8.5V4M12 8.5V4" />
+          <path d="M5.5 8.5h9v2.2a4.5 4.5 0 0 1-9 0V8.5z" />
+          <path d="M10 15.2v1.6" />
         </svg>
-        {{ t('sessionToolbar.files') }}
+        {{ t('ports.title') }}
       </button>
-    </div>
-
-    <div class="st-divider" />
-
-    <button class="st-btn" :title="t('ports.dialogTitle')" @click="cmd('ports-manager')">
-      <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M8 8.5V4M12 8.5V4" />
-        <path d="M5.5 8.5h9v2.2a4.5 4.5 0 0 1-9 0V8.5z" />
-        <path d="M10 15.2v1.6" />
-      </svg>
-      {{ t('ports.title') }}
-    </button>
-    <button class="st-btn" :title="t('common.reconnect')" :disabled="tab.status === 'connected'" @click="cmd('reconnect')">
-      <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-        <path d="M8.3 11.7l3.4-3.4M8.8 4.9l1.7-1.7a3.3 3.3 0 0 1 4.7 4.7l-1.7 1.7M11.2 15.1l-1.7 1.7a3.3 3.3 0 0 1-4.7-4.7l1.7-1.7" />
-      </svg>
-      {{ t('sessionToolbar.connect') }}
-    </button>
-    <button class="st-btn" :title="t('sessionToolbar.disconnect')" :disabled="tab.status === 'disconnected'" @click="cmd('disconnect')">
-      <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-        <path d="M10 3.5V10M5.9 6.2a6 6 0 1 0 8.2 0" />
-      </svg>
-      {{ t('common.disconnect') }}
-    </button>
+      <button class="st-btn" :title="t('common.reconnect')" :disabled="tab.status === 'connected'" @click="cmd('reconnect')">
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <path d="M8.3 11.7l3.4-3.4M8.8 4.9l1.7-1.7a3.3 3.3 0 0 1 4.7 4.7l-1.7 1.7M11.2 15.1l-1.7 1.7a3.3 3.3 0 0 1-4.7-4.7l1.7-1.7" />
+        </svg>
+        {{ t('sessionToolbar.connect') }}
+      </button>
+      <button class="st-btn" :title="t('sessionToolbar.disconnect')" :disabled="tab.status === 'disconnected'" @click="cmd('disconnect')">
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <path d="M10 3.5V10M5.9 6.2a6 6 0 1 0 8.2 0" />
+        </svg>
+        {{ t('common.disconnect') }}
+      </button>
+    </template>
 
     <template v-if="tab.viewMode === 'terminal'">
-      <div class="st-divider" />
+      <div v-if="isSession" class="st-divider" />
       <button class="st-btn" :title="t('sessionToolbar.clearShortcut')" @click="tabCmd('clear')">
         <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 5h12l-4.6 5.3v4.2L8.6 16v-5.7L4 5z" />
@@ -109,7 +111,7 @@ const proxyBadge = computed(() => {
 
     <div class="st-spacer" />
 
-    <div v-if="proxyBadge" class="proxy-badge" :title="t('sessionToolbar.proxyTooltip', { mode: proxyBadge.text })">
+    <div v-if="isSession && proxyBadge" class="proxy-badge" :title="t('sessionToolbar.proxyTooltip', { mode: proxyBadge.text })">
       <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
         <template v-if="proxyBadge.icon === 'shield'"><path d="M10 3l6 2.2v4.9c0 3.9-2.5 6.4-6 7.9-3.5-1.5-6-4-6-7.9V5.2L10 3z" /></template>
         <template v-else-if="proxyBadge.icon === 'link'"><path d="M8.3 11.7l3.4-3.4M8.8 4.9l1.7-1.7a3.3 3.3 0 0 1 4.7 4.7l-1.7 1.7M11.2 15.1l-1.7 1.7a3.3 3.3 0 0 1-4.7-4.7l1.7-1.7" /></template>
@@ -118,7 +120,7 @@ const proxyBadge = computed(() => {
       </svg>
       {{ proxyBadge.text }}
     </div>
-    <div class="addr-badge" :title="tab.address">{{ tab.address }}</div>
+    <div class="addr-badge" :title="tab.address">{{ tab.kind === 'local' ? t('sessionToolbar.localBadge') : tab.address }}</div>
   </div>
 </template>
 

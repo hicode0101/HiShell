@@ -45,7 +45,7 @@ function onStripContext(e: MouseEvent) {
         @auxclick.middle.stop="sessions.closeTab(tab.id)"
         @contextmenu.stop="tabContextMenu($event, tab)"
       >
-        <span v-if="tab.kind === 'session'" class="dot" :class="tab.status" />
+        <span v-if="tab.kind !== 'settings'" class="dot" :class="tab.status" />
         <svg v-else class="dot gear" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <circle cx="10" cy="10" r="2.1" />
           <path d="M10 3.2v2M10 14.8v2M16.8 10h-2M5.2 10h-2M14.65 5.35l-1.42 1.42M6.77 13.23l-1.42 1.42M14.65 14.65l-1.42-1.42M6.77 6.77L5.35 5.35" />

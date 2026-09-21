@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { SessionTab } from '../../api/types'
+import type { SessionTab, DirEntry } from '../../api/types'
 import FilePane from './FilePane.vue'
 import type { TransferRequest } from './FilePane.vue'
 import TransferQueue from './TransferQueue.vue'
@@ -12,6 +12,17 @@ import { t } from '../../i18n'
 
 const props = defineProps<{ tab: SessionTab }>()
 const transfers = useTransfersStore()
+
+const remotePane = ref<InstanceType<typeof FilePane>>()
+
+/** 快捷下载（工具菜单）使用：远程当前路径与选中条目 */
+function getRemotePath(): string {
+  return rightPath.value
+}
+function getRemoteSelection(): DirEntry[] {
+  return remotePane.value?.getSelectedEntries() ?? []
+}
+defineExpose({ getRemotePath, getRemoteSelection })
 
 const splitRatio = ref(0.5)
 const panesEl = ref<HTMLElement>()
@@ -87,6 +98,7 @@ function onTransfer(req: TransferRequest) {
       />
       <div class="divider" :class="{ dragging: dividerDragging }" @mousedown="onDividerDown" />
       <FilePane
+        ref="remotePane"
         side="remote"
         :session="tab"
         class="flex-1"

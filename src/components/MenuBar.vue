@@ -27,9 +27,10 @@ const menus = computed<MenuDef[]>(() => [
     children: [
       { label: t('menus.newConnection'), command: 'new-connection', shortcut: 'Alt+N' },
       { label: t('menus.newSftp'), command: 'new-sftp', shortcut: 'Alt+S' },
+      { label: t('menus.newLocalTerminal'), command: 'new-local', shortcut: 'Alt+L' },
       { separator: true },
-      { label: t('menus.importSessions'), command: 'import-sessions', disabled: true },
-      { label: t('menus.openConfigDir'), command: 'open-config-dir', disabled: true },
+      { label: t('menus.importSessions'), command: 'import-sessions' },
+      { label: t('menus.openConfigDir'), command: 'open-config-dir' },
       { separator: true },
       { label: t('menus.exit'), command: 'exit' },
     ],
@@ -40,7 +41,7 @@ const menus = computed<MenuDef[]>(() => [
       { label: t('menus.copy'), command: 'edit-copy', shortcut: 'Ctrl+Shift+C' },
       { label: t('menus.paste'), command: 'edit-paste', shortcut: 'Ctrl+Shift+V' },
       { separator: true },
-      { label: t('menus.selectAll'), command: 'edit-select-all', disabled: true },
+      { label: t('menus.selectAll'), command: 'edit-select-all' },
       { label: t('menus.clearScreen'), command: 'edit-clear', shortcut: 'Ctrl+L' },
     ],
   },
@@ -59,9 +60,8 @@ const menus = computed<MenuDef[]>(() => [
   {
     label: t('menus.tools'),
     children: [
-      { label: t('menus.forwardManager'), command: 'ports-manager' },
-      { label: t('menus.quickUpload'), command: 'quick-upload' },
-      { label: t('menus.quickDownload'), command: 'quick-download' },
+      { label: t('menus.sessionManager'), command: 'session-manager' },
+      { label: t('menus.userKeys'), command: 'user-keys' },
       { separator: true },
       { label: t('menus.options'), command: 'open-settings' },
     ],
@@ -89,7 +89,7 @@ const menus = computed<MenuDef[]>(() => [
   {
     label: t('menus.help'),
     children: [
-      { label: t('menus.hotkeys'), command: 'help-hotkeys', disabled: true },
+      { label: t('menus.hotkeys'), command: 'help-hotkeys' },
       { label: t('menus.about'), command: 'about' },
     ],
   },

@@ -11,12 +11,17 @@ import SftpView from '../components/sftp/SftpView.vue'
 import ConnectDialog from '../components/connect/ConnectDialog.vue'
 import PortForwardDialog from '../components/ports/PortForwardDialog.vue'
 import PromptDialog from '../components/PromptDialog.vue'
+import ImportDialog from '../components/import/ImportDialog.vue'
+import SessionManagerDialog from '../components/SessionManagerDialog.vue'
+import UserKeysDialog from '../components/UserKeysDialog.vue'
 import SettingsView from './SettingsView.vue'
 import { FButton, FDialog, FTextBox, toast } from '../ui'
 import { useSessionsStore } from '../stores/sessions'
+import { useTransfersStore } from '../stores/transfers'
 import { useProfilesStore, parseQuickConnect } from '../stores/profiles'
 import { useSettingsStore } from '../stores/settings'
-import { defaultProfile } from '../api/types'
+import { defaultProfile, type SessionTab } from '../api/types'
+import { openConfigDir } from '../api/backend'
 import { t } from '../i18n'
 import { tauriWindow } from '../api/adapter'
 
@@ -29,6 +34,18 @@ const settings = useSettingsStore()
 const renameDialogOpen = ref(false)
 const renameValue = ref('')
 const aboutOpen = ref(false)
+const importDialogOpen = ref(false)
+const sessionManagerOpen = ref(false)
+const userKeysOpen = ref(false)
+const hotkeysOpen = ref(false)
+const sftpRef = ref<InstanceType<typeof SftpView>>()
+
+/** 向当前激活标签派发终端命令（清屏/复制/粘贴/全选/搜索） */
+function activeTabCommand(cmd: string) {
+  const tab = sessions.activeTab
+  if (!tab) return
+  window.dispatchEvent(new CustomEvent('hishell-tab-command', { detail: { tabId: tab.id, cmd } }))
+}
 
 function command(raw: string) {
   // 携带参数的命令：name:payload
@@ -58,6 +75,21 @@ function command(raw: string) {
       sessions.setViewMode(tab.id, 'sftp')
       break
     }
+    case 'new-local':
+      sessions.createLocalTab()
+      break
+    case 'new-serial':
+      toast(t('main.serialTodo'))
+      break
+    case 'new-telnet':
+      toast(t('main.telnetTodo'))
+      break
+    case 'import-sessions':
+      importDialogOpen.value = true
+      break
+    case 'open-config-dir':
+      openConfigDir().catch((e) => toast(String(e), 'error'))
+      break
     case 'reconnect': {
       const tab = sessions.activeTab
       if (tab?.profileId) {
@@ -119,13 +151,25 @@ function command(raw: string) {
       renameDialogOpen.value = false
       break
     case 'edit-copy':
-      toast(t('main.copyHint'))
+      activeTabCommand('copy')
       break
     case 'edit-paste':
-      toast(t('main.pasteHint'))
+      activeTabCommand('paste')
       break
     case 'edit-clear':
-      toast(t('main.clearHint'))
+      activeTabCommand('clear')
+      break
+    case 'edit-select-all':
+      activeTabCommand('select-all')
+      break
+    case 'help-hotkeys':
+      hotkeysOpen.value = true
+      break
+    case 'session-manager':
+      sessionManagerOpen.value = true
+      break
+    case 'user-keys':
+      userKeysOpen.value = true
       break
     case 'forward-manager':
     case 'ports-manager': {
@@ -134,8 +178,10 @@ function command(raw: string) {
       break
     }
     case 'quick-upload':
+      quickUpload()
+      break
     case 'quick-download':
-      toast(t('main.quickTransferHint'))
+      quickDownload()
       break
     case 'exit':
       tauriWindow().then((w) => w?.close())
@@ -152,6 +198,73 @@ function onWindowCommand(e: Event) {
   command((e as CustomEvent<string>).detail)
 }
 
+/* ---------- 快捷上传/下载（工具菜单） ---------- */
+
+const transfersStore = useTransfersStore()
+
+/** 需要一个已连接的 SSH 会话（SFTP 视图可用时才可取到远程路径） */
+function connectedSession() {
+  const tab = sessions.activeTab
+  if (!tab || tab.kind !== 'session' || tab.status !== 'connected' || tab.sid === undefined) {
+    toast(t('main.needConnectedSession'), 'error')
+    return null
+  }
+  return tab
+}
+
+async function quickUpload() {
+  const tab = connectedSession()
+  if (!tab) return
+  const remotePath = sftpRef.value?.getRemotePath()
+  if (!remotePath) {
+    toast(t('main.needConnectedSession'), 'error')
+    return
+  }
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const files = await open({ multiple: true, title: t('sftp.upload') })
+  if (!files) return
+  const list = Array.isArray(files) ? files : [files]
+  for (const f of list) {
+    const name = f.split(/[\\/]/).pop() ?? f
+    await transfersStore.submit({
+      sid: tab.sid,
+      name,
+      isDir: false,
+      direction: 'upload',
+      localPath: f,
+      remotePath: `${remotePath.replace(/\/+$/, '')}/${name}`,
+      total: 1,
+    })
+  }
+  toast(t('sftp.paneLoadingToastUp', { n: list.length }), 'success')
+}
+
+async function quickDownload() {
+  const tab = connectedSession()
+  if (!tab) return
+  const targets = sftpRef.value?.getRemoteSelection() ?? []
+  if (!targets.length) {
+    toast(t('main.noSelectionForDownload'), 'error')
+    return
+  }
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const dir = await open({ directory: true, title: t('sftp.download') })
+  if (typeof dir !== 'string' || !dir) return
+  const remoteDir = sftpRef.value?.getRemotePath() ?? '/'
+  for (const entry of targets) {
+    await transfersStore.submit({
+      sid: tab.sid,
+      name: entry.name,
+      isDir: entry.kind === 'dir',
+      direction: 'download',
+      localPath: `${dir.replace(/[\\/]+$/, '')}\\${entry.name}`,
+      remotePath: `${remoteDir.replace(/\/+$/, '')}/${entry.name}`,
+      total: entry.size || 1,
+    })
+  }
+  toast(t('sftp.paneLoadingToast', { n: targets.length }), 'success')
+}
+
 /* ---------- 全局快捷键 ---------- */
 
 function onKeydown(e: KeyboardEvent) {
@@ -159,6 +272,15 @@ function onKeydown(e: KeyboardEvent) {
   if (ctrl && e.key === 'n') {
     e.preventDefault()
     command('new-connection')
+  } else if (e.altKey && e.key.toLowerCase() === 'n') {
+    e.preventDefault()
+    command('new-connection')
+  } else if (e.altKey && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    command('new-sftp')
+  } else if (e.altKey && e.key.toLowerCase() === 'l') {
+    e.preventDefault()
+    command('new-local')
   } else if (ctrl && e.shiftKey && e.key.toLowerCase() === 'f') {
     e.preventDefault()
     command('view-sftp')
@@ -192,6 +314,23 @@ onMounted(async () => {
 })
 
 const activeTab = computed(() => sessions.activeTab)
+
+/** 快捷键一览（与实际实现一致） */
+const hotkeyRows = computed(() => [
+  { action: t('menus.newConnection'), keys: 'Ctrl+N / Alt+N' },
+  { action: t('menus.newSftp'), keys: 'Alt+S' },
+  { action: t('menus.fileView'), keys: 'Ctrl+Shift+F' },
+  { action: t('menus.newLocalTerminal'), keys: 'Alt+L' },
+  { action: t('menus.tabNext'), keys: 'Ctrl+Tab' },
+  { action: t('menus.tabPrev'), keys: 'Ctrl+Shift+Tab' },
+  { action: t('menus.tabClose'), keys: 'Ctrl+W' },
+  { action: t('menus.clearScreen'), keys: 'Ctrl+L' },
+])
+
+/** 终端视图何时隐藏：SSH 会话按视图模式切换；本地终端永远显示终端 */
+function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMode'] }) {
+  return tab.kind === 'session' && tab.viewMode !== 'terminal'
+}
 </script>
 
 <template>
@@ -208,9 +347,15 @@ const activeTab = computed(() => sessions.activeTab)
       <template v-else-if="activeTab">
         <SessionToolbar :tab="activeTab" />
         <div class="pane-area">
-          <!-- 终端/文件视图均保持挂载（v-show 切换），避免 xterm 二次 open 丢内容 -->
-          <TerminalPane :tab="activeTab" :class="{ 'view-hidden': activeTab.viewMode !== 'terminal' }" />
-          <SftpView :tab="activeTab" :class="{ 'view-hidden': activeTab.viewMode !== 'sftp' }" />
+          <!-- 终端/文件视图均保持挂载（v-show 切换），避免 xterm 二次 open 丢内容；
+               本地终端标签没有 SFTP 视图 -->
+          <TerminalPane :tab="activeTab" :class="{ 'view-hidden': isHidden(activeTab) }" />
+          <SftpView
+            v-if="activeTab.kind === 'session'"
+            ref="sftpRef"
+            :tab="activeTab"
+            :class="{ 'view-hidden': activeTab.viewMode !== 'sftp' }"
+          />
         </div>
       </template>
       <div v-else class="empty-state">
@@ -228,6 +373,21 @@ const activeTab = computed(() => sessions.activeTab)
     <ConnectDialog />
     <PortForwardDialog />
     <PromptDialog />
+    <ImportDialog v-model:open="importDialogOpen" />
+    <SessionManagerDialog v-model:open="sessionManagerOpen" />
+    <UserKeysDialog v-model:open="userKeysOpen" />
+
+    <FDialog v-model:open="hotkeysOpen" :title="t('menus.hotkeys')" :width="480">
+      <div class="hotkeys-list">
+        <div v-for="h in hotkeyRows" :key="h.action" class="hotkey-row">
+          <span>{{ h.action }}</span>
+          <span class="hotkey-keys">{{ h.keys }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <FButton variant="accent" @click="hotkeysOpen = false">{{ t('common.close') }}</FButton>
+      </template>
+    </FDialog>
 
     <FDialog v-model:open="renameDialogOpen" :title="t('tabs.renameTitle')" :width="420">
       <FTextBox v-model="renameValue" :placeholder="t('tabs.renamePlaceholder')" @keydown.enter="command('confirm-rename')" />
@@ -339,6 +499,30 @@ const activeTab = computed(() => sessions.activeTab)
 .about-name {
   font-weight: 600;
   margin-bottom: 6px;
+}
+.hotkeys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hotkey-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+.hotkey-row:hover {
+  background: var(--bg-alt-hover);
+}
+.hotkey-keys {
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  background: var(--bg-alt-pressed);
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 .about-desc {
   color: var(--text-secondary);

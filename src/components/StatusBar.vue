@@ -9,7 +9,9 @@ const transfers = useTransfersStore()
 
 const address = computed(() => {
   const tab = sessions.activeTab
-  if (!tab || tab.kind !== 'session') return ''
+  if (!tab) return ''
+  if (tab.kind === 'local') return t('statusbar.localShell')
+  if (tab.kind !== 'session') return ''
   return tab.address || '未连接'
 })
 const statusText = computed(() => {
@@ -28,8 +30,8 @@ const statusText = computed(() => {
       <span>{{ address || t('statusbar.ready') }}</span>
     </div>
     <div class="st-section" v-if="sessions.activeTab?.kind === 'session'">{{ statusText }}</div>
-    <div class="st-section" v-if="sessions.activeTab?.kind === 'session'">xterm</div>
-    <div class="st-section" v-if="sessions.activeTab?.kind === 'session' && sessions.activeTab.cols">
+    <div class="st-section" v-if="sessions.activeTab && sessions.activeTab.kind !== 'settings'">xterm</div>
+    <div class="st-section" v-if="sessions.activeTab && sessions.activeTab.kind !== 'settings' && sessions.activeTab.cols">
       {{ sessions.activeTab.cols }}×{{ sessions.activeTab.rows }}
     </div>
     <div class="st-section" v-if="transfers.runningCount > 0">

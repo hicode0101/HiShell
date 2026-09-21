@@ -95,12 +95,15 @@ export type ViewMode = 'terminal' | 'sftp'
 
 export interface SessionTab {
   id: string
-  kind: 'session' | 'settings'
+  /** session=SSH 会话 / local=本地终端 / settings=设置页 */
+  kind: 'session' | 'local' | 'settings'
   title: string
   address: string
   profileId?: string
-  /** 后端会话 id（tauri 环境） */
+  /** 后端会话 id（tauri 环境，SSH 会话） */
   sid?: number
+  /** 后端本地终端 id（tauri 环境，本地终端标签） */
+  lid?: number
   status: SessionStatus
   /** 断开/失败原因（后端推送） */
   statusMessage?: string
@@ -127,6 +130,8 @@ export interface TransferItem {
   startedAt: number
   elapsedMs: number
   status: TransferStatus
+  /** 所属会话（断点续传重试时需要重新入队） */
+  sid?: number
 }
 
 /* ---------- 快捷连接 ---------- */

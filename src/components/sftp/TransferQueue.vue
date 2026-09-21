@@ -29,6 +29,9 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
     ...(it.status === 'paused'
       ? [{ label: t('transfer.resume'), icon: 'play', onClick: () => transfers.resume(it.id) }]
       : []),
+    ...(it.status === 'failed' || it.status === 'cancelled'
+      ? [{ label: t('transfer.retry'), icon: 'play', onClick: () => transfers.retry(it.id) }]
+      : []),
     ...(it.status === 'running' || it.status === 'queued' || it.status === 'paused'
       ? [{ label: t('transfer.cancel'), icon: 'close', danger: true, onClick: () => transfers.cancel(it.id) }]
       : []),
@@ -90,6 +93,12 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
             <span class="col-ops">
               <button v-if="it.status === 'running'" class="op" :title="t('transfer.pause')" @click="transfers.pause(it.id)">❚❚</button>
               <button v-else-if="it.status === 'paused'" class="op" :title="t('transfer.resume')" @click="transfers.resume(it.id)">▶</button>
+              <button
+                v-else-if="it.status === 'failed' || it.status === 'cancelled'"
+                class="op"
+                :title="t('transfer.retry')"
+                @click="transfers.retry(it.id)"
+              >↻</button>
               <button
                 v-if="['running', 'queued', 'paused'].includes(it.status)"
                 class="op danger"

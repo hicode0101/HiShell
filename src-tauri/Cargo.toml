@@ -29,6 +29,9 @@ base64 = "0.22"
 thiserror = "2"
 async-trait = "0.1"
 keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service", "crypto-rust"] }
+portable-pty = "0.8"
+serde_yaml = "0.9"
+sha2 = "0.10"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

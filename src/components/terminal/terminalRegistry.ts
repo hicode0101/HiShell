@@ -22,6 +22,8 @@ export interface TerminalEntry {
   resizeObserver?: ResizeObserver
   /** 真实模式：输入/尺寸是否已接线 */
   wired: boolean
+  /** 本地终端模式：输入/尺寸是否已接线 */
+  localWired: boolean
 }
 
 const registry = new Map<string, TerminalEntry>()
@@ -31,11 +33,12 @@ if (typeof window !== 'undefined') {
   ;(window as unknown as Record<string, unknown>).__termReg = registry
 }
 
-function lightTheme() {
+function darkTheme() {
   return {
     background: '#0c0c0c',
     foreground: '#cccccc',
     cursor: '#cccccc',
+    cursorAccent: '#0c0c0c',
     selectionBackground: 'rgba(76,194,255,.35)',
     black: '#0c0c0c',
     red: '#e3564c',
@@ -45,12 +48,51 @@ function lightTheme() {
     magenta: '#e58ee5',
     cyan: '#4dc6c6',
     white: '#cccccc',
+    brightBlack: '#767676',
+    brightRed: '#ff6b60',
+    brightGreen: '#7ee08a',
+    brightYellow: '#ffd97a',
+    brightBlue: '#7fd6ff',
+    brightMagenta: '#f2adf2',
+    brightCyan: '#7fdfdf',
+    brightWhite: '#f2f2f2',
   }
 }
-// 原型阶段：浅色应用主题下终端同样使用深色底（对齐 Xshell 惯例）；
-// 浅色终端配色作为 M5 设置项再开放。
-function darkTheme() {
-  return lightTheme()
+
+/** 浅色终端配色（对齐 Xshell/VSCode Light 惯例：白底深字） */
+function lightTerminalTheme() {
+  return {
+    background: '#ffffff',
+    foreground: '#1f1f1f',
+    cursor: '#1f1f1f',
+    cursorAccent: '#ffffff',
+    selectionBackground: 'rgba(0,120,215,.28)',
+    black: '#3b3b3b',
+    red: '#cd3131',
+    green: '#107c10',
+    yellow: '#949800',
+    blue: '#0451a5',
+    magenta: '#bc05bc',
+    cyan: '#0598bc',
+    white: '#555555',
+    brightBlack: '#666666',
+    brightRed: '#e05252',
+    brightGreen: '#22b322',
+    brightYellow: '#b5ba13',
+    brightBlue: '#1f6fd0',
+    brightMagenta: '#d63fd6',
+    brightCyan: '#1cb9ce',
+    brightWhite: '#8a8a8a',
+  }
+}
+
+/** 终端配色方案：dark=固定深色 / light=固定浅色 / followApp=跟随应用主题 */
+function pickTermTheme(scheme: 'dark' | 'light' | 'followApp'): ReturnType<typeof darkTheme> {
+  if (scheme === 'light') return lightTerminalTheme()
+  if (scheme === 'followApp') {
+    return useSettingsStore().theme === 'light' ? lightTerminalTheme() : darkTheme()
+  }
+  return darkTheme()
 }
 
 export function getTerminal(tab: SessionTab): TerminalEntry {
@@ -64,14 +106,14 @@ export function getTerminal(tab: SessionTab): TerminalEntry {
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 5000,
-      theme: settings.theme === 'dark' ? darkTheme() : lightTheme(),
+      theme: pickTermTheme(settings.s.terminalColorScheme),
     })
     const fit = new FitAddon()
     const search = new SearchAddon()
     term.loadAddon(fit)
     term.loadAddon(search)
 
-    entry = { term, fit, search, wired: false }
+    entry = { term, fit, search, wired: false, localWired: false }
     registry.set(tab.id, entry)
     // 尺寸变化时同步到会话标签（状态栏显示 cols×rows）
     term.onResize(({ cols, rows }) => {
@@ -134,13 +176,13 @@ export function terminalEntry(tabId: string) {
   return registry.get(tabId)
 }
 
-/** 应用设置变化（字体/主题）到所有已存在的终端 */
+/** 应用设置变化（字体/主题/配色方案）到所有已存在的终端 */
 export function applySettingsToTerminals() {
   const settings = useSettingsStore()
   for (const entry of registry.values()) {
     entry.term.options.fontFamily = settings.s.terminalFontFamily
     entry.term.options.fontSize = settings.s.terminalFontSize
-    entry.term.options.theme = settings.theme === 'dark' ? darkTheme() : lightTheme()
+    entry.term.options.theme = pickTermTheme(settings.s.terminalColorScheme)
     try {
       entry.fit.fit()
     } catch {

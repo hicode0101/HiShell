@@ -5,8 +5,8 @@ import { useSettingsStore } from '../../stores/settings'
 import { useSessionsStore } from '../../stores/sessions'
 import { t } from '../../i18n'
 import { isTauri } from '../../api/adapter'
-import { onSshDataFor } from '../../stores/events'
-import { sshResize, sshWrite } from '../../api/backend'
+import { onSshDataFor, onLocalDataFor } from '../../stores/events'
+import { localResize, localWrite, sshResize, sshWrite } from '../../api/backend'
 import { applySettingsToTerminals, attachTerminal, detachTerminal, terminalEntry } from './terminalRegistry'
 
 const props = defineProps<{ tab: SessionTab }>()
@@ -18,13 +18,39 @@ const settings = useSettingsStore()
 
 let container: HTMLElement | null = null
 let unlistenData: (() => void) | null = null
+let unlistenLocal: (() => void) | null = null
 
-/** 选项卡功能区事件（清屏/搜索），按 tabId 过滤 */
+/** 选项卡功能区事件（清屏/搜索/复制/粘贴/全选），按 tabId 过滤 */
 function onTabCommand(e: Event) {
   const { tabId, cmd } = (e as CustomEvent<{ tabId: string; cmd: string }>).detail
   if (tabId !== props.tab.id) return
-  if (cmd === 'clear') terminalEntry(props.tab.id)?.term.clear()
-  else if (cmd === 'search') toggleSearch()
+  const entry = terminalEntry(props.tab.id)
+  switch (cmd) {
+    case 'clear':
+      entry?.term.clear()
+      break
+    case 'search':
+      toggleSearch()
+      break
+    case 'copy':
+      if (entry && entry.term.hasSelection()) {
+        navigator.clipboard.writeText(entry.term.getSelection()).catch(() => {})
+      }
+      break
+    case 'paste':
+      if (entry) {
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) entry.term.input(text)
+          })
+          .catch(() => {})
+      }
+      break
+    case 'select-all':
+      entry?.term.selectAll()
+      break
+  }
 }
 
 onMounted(() => {
@@ -41,13 +67,13 @@ onMounted(() => {
     )
   }
 })
-// 尺寸变化同步到后端 PTY
+// 尺寸变化同步到后端 PTY（SSH 会话或本地终端）
 watch(
   () => [props.tab.cols, props.tab.rows],
   ([cols, rows]) => {
-    if (isTauri && props.tab.sid !== undefined && cols && rows) {
-      sshResize(props.tab.sid, cols, rows).catch(() => {})
-    }
+    if (!isTauri || !cols || !rows) return
+    if (props.tab.sid !== undefined) sshResize(props.tab.sid, cols, rows).catch(() => {})
+    if (props.tab.lid !== undefined) localResize(props.tab.lid, cols, rows).catch(() => {})
   },
 )
 
@@ -59,16 +85,20 @@ watch(
     const entry = terminalEntry(props.tab.id)
     if (!entry) return
     if (status === 'connected') {
+      if (props.tab.kind === 'local') return // 本地终端开箱即连，无需横幅
       entry.term.write(`
 
 [92m[HiShell] ${t('terminal.connected')}[0m
 
 `)
     } else if (status === 'disconnected') {
+      const text = props.tab.kind === 'local'
+        ? message || t('terminal.localExited')
+        : `${t('terminal.disconnected')}${message ? ' — ' + message : ''}`
       entry.term.write(
         `
 
-[91m[HiShell] ${t('terminal.disconnected')}${message ? ' — ' + message : ''}[0m
+[91m[HiShell] ${text}[0m
 
 `,
       )
@@ -79,6 +109,11 @@ watch(
 // 按 sid 动态解析目标终端（跨标签切换时不串线）
 function resolveEntryBySid(sid: number) {
   const tab = useSessionsStore().tabs.find((t) => t.sid === sid)
+  return tab ? terminalEntry(tab.id) : undefined
+}
+
+function resolveEntryByLid(lid: number) {
+  const tab = useSessionsStore().tabs.find((t) => t.lid === lid)
   return tab ? terminalEntry(tab.id) : undefined
 }
 
@@ -108,10 +143,37 @@ watch(
   { immediate: true },
 )
 
+// 本地终端（lid）：订阅 local-data，输入/尺寸走 local_* 命令
+watch(
+  () => props.tab.lid,
+  (lid) => {
+    if (!isTauri || lid === undefined) return
+    if (unlistenLocal) unlistenLocal()
+    unlistenLocal = onLocalDataFor(lid, (bytes) => {
+      resolveEntryByLid(lid)?.term.write(bytes)
+    })
+    const entry = resolveEntryByLid(lid)
+    if (entry && !entry.localWired) {
+      entry.localWired = true
+      const encoder = new TextEncoder()
+      entry.term.onData((d) => {
+        const tab = useSessionsStore().tabs.find((x) => x.lid === lid)
+        if (tab?.lid !== undefined) {
+          localWrite(tab.lid, encoder.encode(d)).catch(() => {})
+        }
+      })
+    }
+    if (entry) localResize(lid, entry.term.cols, entry.term.rows).catch(() => {})
+  },
+  { immediate: true },
+)
+
 onUnmounted(() => {
   window.removeEventListener('hishell-tab-command', onTabCommand)
   if (unlistenData) unlistenData()
   unlistenData = null
+  if (unlistenLocal) unlistenLocal()
+  unlistenLocal = null
   detachTerminal(props.tab.id)
 })
 
@@ -123,7 +185,7 @@ watch(
 )
 
 watch(
-  () => [settings.s.theme, settings.s.terminalFontFamily, settings.s.terminalFontSize],
+  () => [settings.s.theme, settings.s.terminalColorScheme, settings.s.terminalFontFamily, settings.s.terminalFontSize],
   () => applySettingsToTerminals(),
 )
 

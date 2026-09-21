@@ -25,17 +25,42 @@ function quickConnect() {
 
 <template>
   <div class="toolbar">
+    <!-- 新建本地终端 -->
+    <button class="tb-btn" :title="t('toolbar.newLocalTerminal')" @click="emit('new-local')">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <rect x="3" y="4.5" width="14" height="11" rx="1.5" /><path d="M6.5 8l2.8 2.3-2.8 2.3M11.2 13h3" />
+      </svg>
+    </button>
+    <!-- 新建 SSH 连接 -->
     <button class="tb-btn" :title="t('toolbar.newConnection')" @click="emit('new-connection')">
       <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
         <rect x="3" y="4.5" width="14" height="11" rx="1.5" /><path d="M6.5 8l2.8 2.3-2.8 2.3M11.2 13h3" /><path d="M16.5 13.5v5M14 16h5" stroke-width="1.5" />
       </svg>
-      <svg class="caret" width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 3l2.5 2.5L6.5 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" /></svg>
     </button>
-    <button class="tb-btn" :title="t('toolbar.sessionManager')" @click="toast(t('toolbar.sessionManager'))">
+    <!-- 新建 Serial 终端 -->
+    <button class="tb-btn" :title="t('toolbar.newSerial')" @click="emit('new-serial')">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6.2 4.5h7.6l2 6.4a1.7 1.7 0 0 1-1.6 2.2H5.8a1.7 1.7 0 0 1-1.6-2.2l2-6.4z" />
+        <path d="M7.4 7.6h.01M10 7.6h.01M12.6 7.6h.01M6.7 10.3h.01M13.3 10.3h.01" stroke-width="1.8" />
+        <path d="M10 13.1v3.4" />
+      </svg>
+    </button>
+    <!-- 新建 Telnet 终端 -->
+    <button class="tb-btn" :title="t('toolbar.newTelnet')" @click="emit('new-telnet')">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <circle cx="10" cy="10" r="6.5" />
+        <ellipse cx="10" cy="10" rx="2.9" ry="6.5" />
+        <path d="M3.5 10h13M4.7 6.4h10.6M4.7 13.6h10.6" />
+      </svg>
+    </button>
+
+    <div class="tb-divider" />
+
+    <!-- 会话管理 -->
+    <button class="tb-btn" :title="t('toolbar.sessionManager')" @click="emit('session-manager')">
       <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3.5 6.3c0-.7.6-1.3 1.3-1.3h3l1.8 1.8h5.6c.7 0 1.3.6 1.3 1.3v7.6c0 .7-.6 1.3-1.3 1.3H4.8c-.7 0-1.3-.6-1.3-1.3V6.3z" />
       </svg>
-      <svg class="caret" width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 3l2.5 2.5L6.5 3" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" /></svg>
     </button>
 
     <div class="tb-spacer" />
@@ -90,10 +115,6 @@ function quickConnect() {
 .tb-btn:disabled {
   color: var(--text-disabled);
   cursor: default;
-}
-.caret {
-  opacity: 0.6;
-  margin-left: -2px;
 }
 .tb-divider {
   width: 1px;

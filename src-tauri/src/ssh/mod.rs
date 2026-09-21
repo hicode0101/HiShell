@@ -303,8 +303,9 @@ pub async fn run_transfer(
     direction: String,
     local_path: String,
     remote_path: String,
+    resume: bool,
 ) {
-    let result = transfer_loop(&app, &transfers, &session, tid, &direction, &local_path, &remote_path).await;
+    let result = transfer_loop(&app, &transfers, &session, tid, &direction, &local_path, &remote_path, resume).await;
     let (ok, error) = match result {
         Ok(()) => (true, None),
         Err(e) => (false, Some(e.to_string())),
@@ -321,6 +322,7 @@ async fn transfer_loop(
     direction: &str,
     local_path: &str,
     remote_path: &str,
+    resume: bool,
 ) -> AppResult<()> {
     let state = transfers.get(tid).ok_or_else(|| AppError::NoSuchTransfer(tid))?;
     let sftp = get_sftp(session).await?;
@@ -365,10 +367,30 @@ async fn transfer_loop(
         use russh_sftp::protocol::OpenFlags;
         use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
         let mut local = tokio::fs::File::open(local_path).await?;
-        let flags = OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE;
+        // 断点续传：远端已有部分文件（0 < remote < 本地大小）时从该偏移继续
+        let mut start_offset: u64 = 0;
+        if resume {
+            let remote_size = sftp.metadata(remote_path).await.ok().and_then(|m| m.size).unwrap_or(0);
+            let local_size = local.metadata().await.map(|m| m.len()).unwrap_or(0);
+            if remote_size > 0 && remote_size < local_size {
+                start_offset = remote_size;
+                local.seek(std::io::SeekFrom::Start(remote_size)).await?;
+                crate::logger::log(&format!("tid={tid} 上传续传：从偏移 {remote_size} 继续（本地共 {local_size}）"));
+            }
+        }
+        let flags = if start_offset > 0 {
+            // 续传：保留远端已有内容，从末尾追加
+            OpenFlags::CREATE | OpenFlags::WRITE
+        } else {
+            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE
+        };
         let mut remote = sftp.open_with_flags(remote_path, flags).await.map_err(|e| AppError::msg(format!("打开远程文件失败: {e}")))?;
+        if start_offset > 0 {
+            remote.seek(std::io::SeekFrom::Start(start_offset)).await.map_err(|e| AppError::msg(format!("远端 seek 失败: {e}")))?;
+        }
+        state.transferred.store(start_offset, Ordering::Relaxed);
         let mut buf = vec![0u8; CHUNK];
-        let mut offset: u64 = 0;
+        let mut offset: u64 = start_offset;
         loop {
             check_flags(&state).await?;
             let n = local.read(&mut buf).await?;
@@ -381,9 +403,29 @@ async fn transfer_loop(
         }
         let _ = remote.shutdown().await;
     } else {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
         let mut remote = sftp.open(remote_path).await.map_err(|e| AppError::msg(format!("打开远程文件失败: {e}")))?;
-        let mut local = tokio::fs::File::create(local_path).await?;
+        // 断点续传：本地已有部分文件（0 < local < 远端大小）时从该偏移继续
+        let mut start_offset: u64 = 0;
+        if resume {
+            let local_size = tokio::fs::metadata(local_path).await.map(|m| m.len()).unwrap_or(0);
+            if local_size > 0 && (total == 0 || local_size < total) {
+                start_offset = local_size;
+                remote.seek(std::io::SeekFrom::Start(local_size)).await.map_err(|e| AppError::msg(format!("远端 seek 失败: {e}")))?;
+                crate::logger::log(&format!("tid={tid} 下载续传：从偏移 {local_size} 继续（远端共 {total}）"));
+            }
+        }
+        let local_file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(start_offset == 0)
+            .open(local_path)
+            .await?;
+        let mut local = tokio::io::BufWriter::new(local_file);
+        if start_offset > 0 {
+            local.seek(std::io::SeekFrom::Start(start_offset)).await?;
+        }
+        state.transferred.store(start_offset, Ordering::Relaxed);
         let mut buf = vec![0u8; CHUNK];
         loop {
             check_flags(&state).await?;

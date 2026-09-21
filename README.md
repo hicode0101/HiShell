@@ -2,7 +2,8 @@
 
 Win11 Fluent Design 风格的 SSH 客户端（对标 Xshell/Xftp/Tabby），基于 **Tauri 2 + Rust + Vue 3**。
 
-> 当前状态：**M1–M4 核心功能已实现**（russh 真实连接 / keyring 凭据 / 端口转发 / SFTP 传输引擎），
+> 当前状态：**M1–M5 核心功能已实现**（russh 真实连接 / keyring 凭据 / 端口转发 / SFTP 传输引擎 /
+> 断点续传 / 本地终端 PTY / Xshell·Tabby 会话导入），
 > 前端已从 mock 切换到真实后端（浏览器预览仍保留 mock 模式）。
 > 支持平台：**Windows x64 / Linux x64 / macOS Intel / macOS Apple Silicon**。
 
@@ -10,10 +11,11 @@ Win11 Fluent Design 风格的 SSH 客户端（对标 Xshell/Xftp/Tabby），基�
 
 | 视图 | 说明 |
 |---|---|
-| 终端视图 | 多标签会话（状态圆点/关闭/右键菜单）、xterm.js 终端（模拟 shell：help/ls/clear/exit…）、快速连接地址栏、状态栏（协议/TERM/行列/CAP NUM） |
-| 文件视图（SFTP） | 左右双栏（本地真实列目录 / 远程模拟数据）、快速链接、路径导航/排序/多选、**拖拽传输**、传输队列（进度/速度/估计剩余/暂停取消）+ 日志页签 |
+| 终端视图 | 多标签会话（状态圆点/关闭/右键菜单）、xterm.js 终端（搜索/清屏）、**本地终端标签（ConPTY/openpty）**、快速连接地址栏、状态栏（协议/TERM/行列/CAP NUM） |
+| 文件视图（SFTP） | 左右双栏（本地/远程真实目录）、快速链接、路径导航/排序/多选、**拖拽传输**、传输队列（进度/速度/估计剩余/暂停取消/**失败后断点续传**）+ 日志页签 |
 | 新建连接 | 常规/认证（密码·私钥·KI·Agent）/ **代理连接（无·SOCKS5·HTTP CONNECT·跳板机·ProxyCommand）** / 终端参数 |
-| 设置 | 浅色/深色主题、主题色、终端字体字号（外观可用，其余为占位） |
+| 会话导入 | **文件 → 导入会话**：自动扫描 Xshell（.xsh，含 v5–v8 与旧版目录）与 Tabby（config.yaml），勾选导入并按 主机+端口+用户 去重 |
+| 设置 | 浅色/深色主题、主题色、终端字体字号、**终端配色方案（深色/浅色/跟随应用）** |
 | 国际化 | **跟随系统 / English / 简体中文** 三选，设置页显示当前语言编码（如 zh-CN）；匹配不到语言时默认英语，切换即时生效 |
 | 凭据安全 | 密码/私钥口令经 **OS 钥匙串**（Windows Credential Manager / macOS Keychain / Linux Secret-Service）存储，无 dbus 环境自动回落本地文件 |
 | known_hosts | SHA256 指纹校验，首次/变更弹窗（保存/仅本次/断开），持久化于配置目录 |
@@ -106,12 +108,14 @@ git push origin v0.2.0
 
 ## 里程碑
 
-| 阶段 | 内容 |
-|---|---|
-| **M0** | **界面原型（当前）** |
-| M1 | russh 真实连接（认证/代理/跳板机/known_hosts/会话复用） |
-| M2 | Profile 持久化 + keyring 凭据 + 导入器 |
-| M3 | 端口转发（本地/远程/动态 SOCKS5） |
-| M4 | SFTP 真实传输（递归/并发/断点续传） |
-| M5 | 本地 PTY + 终端增强（WebGL 渲染/主题/搜索/ZMODEM） |
-| M6 | 打包分发 + 自动更新 |
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| M0 | 界面原型 | ✅ |
+| M1 | russh 真实连接（认证/代理/跳板机/known_hosts/会话复用） | ✅ |
+| M2 | Profile 持久化 + keyring 凭据 | ✅ |
+| M3 | 端口转发（本地/远程/动态 SOCKS5） | ✅ |
+| M4 | SFTP 真实传输（递归目录展开、暂停/取消） | ✅ |
+| M5 | 本地 PTY 终端 + 终端增强（搜索/浅色配色方案）+ **断点续传** + **会话导入器（Xshell/Tabby）** | ✅ |
+| M6 | 打包分发（GitHub Actions 已就绪） | ✅ 自动更新待接入 tauri-plugin-updater |
+
+后续规划：ZMODEM（rz/sz）、终端分屏、WebGL 渲染器、iTerm 社区配色集、自动更新签名。

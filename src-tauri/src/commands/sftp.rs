@@ -180,6 +180,66 @@ pub async fn sftp_mkdirs(sessions: tauri::State<'_, Sessions>, sid: u32, paths: 
     Ok(())
 }
 
+/// 更改远程文件/目录权限（八进制，如 644；目录可递归）
+#[tauri::command]
+pub async fn sftp_chmod(
+    sessions: tauri::State<'_, Sessions>,
+    sid: u32,
+    path: String,
+    mode: u32,
+    recursive: bool,
+) -> Result<u32, String> {
+    let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
+    let sftp = ssh::get_sftp(&session).await.map_err(|e| e.to_string())?;
+    if mode > 0o7777 {
+        return Err("权限值无效（应为 0-7777 八进制）".into());
+    }
+    let count = chmod_recursive(sftp.clone(), path.clone(), mode, recursive)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+fn chmod_recursive(
+    sftp: std::sync::Arc<russh_sftp::client::SftpSession>,
+    path: String,
+    mode: u32,
+    recursive: bool,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<u32, String>> + Send>> {
+    Box::pin(chmod_recursive_impl(sftp, path, mode, recursive))
+}
+
+async fn chmod_recursive_impl(
+    sftp: std::sync::Arc<russh_sftp::client::SftpSession>,
+    path: String,
+    mode: u32,
+    recursive: bool,
+) -> Result<u32, String> {
+    // SFTP SETSTAT 的 permissions 携带完整 st_mode：保留原类型位，仅替换权限位
+    let meta = sftp.metadata(&path).await.map_err(|e| format!("读取属性失败: {e}"))?;
+    let type_bits = meta.permissions.unwrap_or(0o100000) & 0o170000;
+    let attrs = russh_sftp::protocol::FileAttributes {
+        permissions: Some(type_bits | (mode & 0o7777)),
+        ..Default::default()
+    };
+    sftp.set_metadata(&path, attrs)
+        .await
+        .map_err(|e| format!("更改权限失败: {e}"))?;
+    let mut count = 1u32;
+    if recursive && meta.is_dir() {
+        let entries = sftp.read_dir(&path).await.map_err(|e| format!("读取目录失败: {e}"))?;
+        for e in entries {
+            let name = e.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
+            let child = format!("{}/{}", path.trim_end_matches('/'), name);
+            count += chmod_recursive(sftp.clone(), child, mode, true).await?;
+        }
+    }
+    Ok(count)
+}
+
 /// 上传/下载前确保本地父目录存在（下载递归时使用）
 #[tauri::command]
 pub async fn local_mkdirs(paths: Vec<String>) -> Result<(), String> {

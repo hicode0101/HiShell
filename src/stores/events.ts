@@ -7,10 +7,13 @@ import {
   type SshPromptEvent,
   type TransferProgressEvent,
   type TransferDoneEvent,
+  type LocalDataEvent,
+  type LocalStatusEvent,
   b64ToBytes,
 } from '../api/backend'
 import { useSessionsStore } from './sessions'
 import { useTransfersStore } from './transfers'
+import { t } from '../i18n'
 
 type DataHandler = (bytes: Uint8Array) => void
 
@@ -30,6 +33,27 @@ export function onSshDataFor(sid: number, handler: DataHandler): () => void {
   if (pending) {
     pending.forEach((b) => handler(b))
     pendingData.delete(sid)
+  }
+  set.add(handler)
+  return () => {
+    set!.delete(handler)
+  }
+}
+
+/** 本地终端（lid 空间与 sid 相互独立，单独建表） */
+const localDataHandlers = new Map<number, Set<DataHandler>>()
+const pendingLocalData = new Map<number, Uint8Array[]>()
+
+export function onLocalDataFor(lid: number, handler: DataHandler): () => void {
+  let set = localDataHandlers.get(lid)
+  if (!set) {
+    set = new Set()
+    localDataHandlers.set(lid, set)
+  }
+  const pending = pendingLocalData.get(lid)
+  if (pending) {
+    pending.forEach((b) => handler(b))
+    pendingLocalData.delete(lid)
   }
   set.add(handler)
   return () => {
@@ -71,5 +95,21 @@ export function initGlobalEvents() {
 
   listenEvent<TransferDoneEvent>('transfer-done', (e) => {
     transfers.applyDone(`xfer-${e.tid}`, e.ok, e.error)
+  })
+
+  listenEvent<LocalDataEvent>('local-data', (e) => {
+    const bytes = b64ToBytes(e.data)
+    const handlers = localDataHandlers.get(e.lid)
+    if (handlers && handlers.size) {
+      handlers.forEach((h) => h(bytes))
+    } else {
+      const arr = pendingLocalData.get(e.lid) ?? []
+      if (arr.length < 64) arr.push(bytes)
+      pendingLocalData.set(e.lid, arr)
+    }
+  })
+
+  listenEvent<LocalStatusEvent>('local-status', (e) => {
+    sessions.setStatusByLid(e.lid, 'disconnected', t('terminal.localExited'))
   })
 }

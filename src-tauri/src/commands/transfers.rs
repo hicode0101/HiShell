@@ -20,6 +20,9 @@ pub struct EnqueueItem {
     pub local_path: String,
     #[serde(rename = "remotePath")]
     pub remote_path: String,
+    /// 断点续传：从已传字节数处继续（对齐目标端已有的部分文件）
+    #[serde(default)]
+    pub resume: bool,
 }
 
 #[derive(Serialize)]
@@ -103,7 +106,8 @@ pub async fn transfer_enqueue(
         let transfers2 = transfers.0.clone();
         let session2 = session.clone();
         let direction = item.direction.clone();
-        tokio::spawn(ssh::run_transfer(app2, transfers2, session2, tid, direction, local.clone(), remote.clone()));
+        let resume = item.resume;
+        tokio::spawn(ssh::run_transfer(app2, transfers2, session2, tid, direction, local.clone(), remote.clone(), resume));
         out.push(Enqueued { tid, local_path: local, remote_path: remote, size });
     }
     Ok(out)

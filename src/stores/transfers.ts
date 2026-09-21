@@ -53,6 +53,7 @@ export const useTransfersStore = defineStore('transfers', {
             startedAt: Date.now(),
             elapsedMs: 0,
             status: 'running',
+            sid,
           }
           this.items.unshift(it)
         }
@@ -132,7 +133,7 @@ export const useTransfersStore = defineStore('transfers', {
       return item.id
     },
 
-    /** 统一入口：tauri → 后端；浏览器 → 模拟 */
+    /** 统一入口：tauri → 后端；浏览器 → 模拟。返回首条任务 id（便于跟踪完成状态） */
     async submit(opts: {
       sid?: number
       name: string
@@ -141,7 +142,7 @@ export const useTransfersStore = defineStore('transfers', {
       remotePath: string
       total: number
       isDir: boolean
-    }) {
+    }): Promise<string | undefined> {
       if (isTauri && opts.sid !== undefined) {
         await this.enqueueReal(opts.sid, {
           sid: opts.sid,
@@ -151,9 +152,10 @@ export const useTransfersStore = defineStore('transfers', {
           localPath: opts.localPath,
           remotePath: opts.remotePath,
         }, opts.name)
-        return
+        const first = this.items.find((i) => i.name === opts.name && i.localPath === opts.localPath)
+        return first?.id
       }
-      this.enqueue(opts)
+      return this.enqueue(opts)
     },
     start(id: string) {
       // 从响应式数组中取代理对象，直接改原始对象不会触发视图更新
@@ -207,6 +209,35 @@ export const useTransfersStore = defineStore('transfers', {
         } else {
           this.finish(id, 'cancelled')
         }
+      }
+    },
+    /** 断点续传重试：失败/取消的任务以 resume 重新入队（目标端已有部分文件时从偏移继续） */
+    async retry(id: string) {
+      const old = this.items.find((i) => i.id === id)
+      if (!old || !isTauri || old.sid === undefined) return
+      if (old.status !== 'failed' && old.status !== 'cancelled') return
+      // 原任务已结束后端清理；保留条目作占位，拿新 tid 继续驱动进度
+      try {
+        const results = await transferEnqueue({
+          sid: old.sid,
+          direction: old.direction,
+          isDir: false,
+          size: old.total,
+          localPath: old.localPath,
+          remotePath: old.remotePath,
+          resume: true,
+        })
+        const r = results[0]
+        if (!r) return
+        old.id = `xfer-${r.tid}`
+        old.status = 'running'
+        old.transferred = 0
+        old.speed = 0
+        old.startedAt = Date.now()
+        old.elapsedMs = 0
+        this.log(t('transfer.log.resuming', { name: old.name }), 'info')
+      } catch (e) {
+        this.log(`${old.name}: ${String(e)}`, 'error')
       }
     },
     finish(id: string, status: TransferStatus) {

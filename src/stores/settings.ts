@@ -4,6 +4,8 @@ import { watch } from 'vue'
 import { setLanguagePref, type LangPref } from '../i18n'
 
 export type ThemeMode = 'light' | 'dark'
+/** 终端配色方案：固定深色 / 固定浅色 / 跟随应用主题 */
+export type TerminalColorScheme = 'dark' | 'light' | 'followApp'
 
 export interface AppSettings {
   theme: ThemeMode
@@ -11,6 +13,7 @@ export interface AppSettings {
   language: LangPref
   terminalFontFamily: string
   terminalFontSize: number
+  terminalColorScheme: TerminalColorScheme
 }
 
 const LS_KEY = 'hishell.settings'
@@ -24,6 +27,7 @@ function defaults(): AppSettings {
     language: 'system',
     terminalFontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
     terminalFontSize: 14,
+    terminalColorScheme: 'dark',
   }
 }
 

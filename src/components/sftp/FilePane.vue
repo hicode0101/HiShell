@@ -2,15 +2,35 @@
 /**
  * 文件窗格：本地 / 远程通用。
  * - 本地：真实列目录（Tauri）/ mock 文件树（浏览器）
- * - 远程：mock 数据（M1 由 sftp_list 事件替换）
+ * - 远程：真实 SFTP（sftp_list），连接前显示提示
  * - 拖拽：行可拖拽 → 落到对侧窗格入传输队列；接受系统文件拖入
+ * - 右键：下载/上传、重命名、删除、属性、新建文件夹、双击打开（远程文件先下载到临时目录）
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import type { DirEntry, SessionTab } from '../../api/types'
-import { listLocalDir, listRemoteDir, specialDir, mockSpecialDirs } from '../../api/backend'
+import {
+  listLocalDir,
+  listRemoteDir,
+  specialDir,
+  mockSpecialDirs,
+  fsRename,
+  fsDelete,
+  fsMkdir,
+  fsStat,
+  openPath,
+  sftpRename,
+  sftpRm,
+  sftpMkdir,
+  sftpStat,
+  sftpChmod,
+  type FileStat,
+  type RemoteStat,
+} from '../../api/backend'
+import { isTauri } from '../../api/adapter'
+import { useTransfersStore } from '../../stores/transfers'
 import { formatBytes, formatTime, fileKindLabel } from '../../utils/format'
 import { t } from '../../i18n'
-import { showContextMenu, toast } from '../../ui'
+import { FButton, FTextBox, FDialog, showContextMenu, toast } from '../../ui'
 
 const props = defineProps<{
   side: 'local' | 'remote'
@@ -42,6 +62,137 @@ const dragOver = ref(false)
 
 const backStack = ref<string[]>([])
 const forwardStack = ref<string[]>([])
+
+/* ---------- 文件操作对话框（重命名/新建/删除确认/属性） ---------- */
+const transfers = useTransfersStore()
+
+type DialogKind = 'rename' | 'newFolder' | 'delete' | 'props'
+const dialog = ref<DialogKind | null>(null)
+const dialogBusy = ref(false)
+const dialogName = ref('')
+const dialogTargets = ref<DirEntry[]>([])
+const propsData = ref<Partial<FileStat & RemoteStat> | null>(null)
+const propsLoading = ref(false)
+
+const deleteTargets = computed(() => dialogTargets.value.filter((x) => x.name !== '..'))
+
+function targetPath(entry: DirEntry): string {
+  return joinPath(path.value, entry.name)
+}
+
+function openRename(entry: DirEntry) {
+  dialogTargets.value = [entry]
+  dialogName.value = entry.name
+  dialog.value = 'rename'
+}
+
+function openNewFolder() {
+  dialogTargets.value = []
+  dialogName.value = t('sftp.newFolderDefault')
+  dialog.value = 'newFolder'
+}
+
+function openDelete(entry: DirEntry) {
+  const sel = entries.value.filter((x) => selected.value.has(x.name))
+  dialogTargets.value = sel.length > 1 && sel.some((x) => x.name === entry.name) ? sel : [entry]
+  dialog.value = 'delete'
+}
+
+async function openProps(entry: DirEntry) {
+  dialog.value = 'props'
+  propsLoading.value = true
+  propsData.value = null
+  try {
+    if (!isTauri) {
+      propsData.value = {
+        name: entry.name,
+        kind: entry.kind,
+        size: entry.size,
+        mtime: entry.mtime,
+        attrs: entry.attrs ?? '',
+        readonly: false,
+      }
+      return
+    }
+    const full = targetPath(entry)
+    if (props.side === 'remote' && props.session?.sid !== undefined) {
+      propsData.value = await sftpStat(props.session.sid, full)
+    } else {
+      propsData.value = await fsStat(full)
+    }
+  } catch (e) {
+    toast(String(e), 'error')
+    dialog.value = null
+  } finally {
+    propsLoading.value = false
+  }
+}
+
+async function applyRename() {
+  const entry = dialogTargets.value[0]
+  const newName = dialogName.value.trim()
+  if (!entry || !newName || newName === entry.name) {
+    dialog.value = null
+    return
+  }
+  dialogBusy.value = true
+  try {
+    if (props.side === 'remote') {
+      await sftpRename(props.session!.sid!, targetPath(entry), joinPath(path.value, newName))
+    } else {
+      await fsRename(targetPath(entry), joinPath(path.value, newName))
+    }
+    dialog.value = null
+    reload()
+  } catch (e) {
+    toast(String(e), 'error')
+  } finally {
+    dialogBusy.value = false
+  }
+}
+
+async function applyNewFolder() {
+  const name = dialogName.value.trim()
+  if (!name) return
+  dialogBusy.value = true
+  try {
+    const full = joinPath(path.value, name)
+    if (props.side === 'remote') {
+      await sftpMkdir(props.session!.sid!, full)
+    } else {
+      await fsMkdir(full)
+    }
+    dialog.value = null
+    reload()
+  } catch (e) {
+    toast(String(e), 'error')
+  } finally {
+    dialogBusy.value = false
+  }
+}
+
+async function applyDelete() {
+  dialogBusy.value = true
+  try {
+    for (const entry of deleteTargets.value) {
+      if (props.side === 'remote') {
+        await sftpRm(props.session!.sid!, targetPath(entry))
+      } else {
+        await fsDelete(targetPath(entry))
+      }
+    }
+    toast(
+      t('sftp.deletedToast', { n: deleteTargets.value.length }),
+      'success',
+    )
+    dialog.value = null
+    reload()
+  } catch (e) {
+    toast(String(e), 'error')
+  } finally {
+    dialogBusy.value = false
+  }
+}
 
 const paneTitle = computed(() => (props.side === 'local' ? t('sftp.local') : props.session?.title || t('sftp.remote')))
 const paneTabLabel = computed(() =>
@@ -247,33 +398,43 @@ function onDrop(e: DragEvent) {
 function rowContextMenu(e: MouseEvent, entry: DirEntry) {
   onRowClick(e, entry, entries.value.findIndex((x) => x.name === entry.name))
   const targets = entries.value.filter((x) => selected.value.has(x.name))
+  const realTargets = targets.length ? targets : [entry]
+  const isDotDot = entry.name === '..'
   showContextMenu(e, [
     {
       label: props.side === 'remote' ? t('sftp.download') : t('sftp.upload'),
       icon: props.side === 'remote' ? 'download' : 'upload',
-      disabled: targets.every((t) => t.name === '..'),
-      onClick: () => emit('transfer-request', { entries: targets, from: props.side, fromPath: path.value }),
+      disabled: realTargets.every((x) => x.name === '..'),
+      onClick: () => emit('transfer-request', { entries: realTargets, from: props.side, fromPath: path.value }),
     },
     { separator: true },
     {
       label: t('sftp.rename'),
       icon: 'edit',
-      onClick: () => toast(t('sftp.renameToast'), 'info'),
+      disabled: isDotDot,
+      onClick: () => openRename(entry),
     },
     {
       label: t('sftp.delete'),
       icon: 'trash',
       danger: true,
-      onClick: () => toast(t('sftp.deleteToast'), 'info'),
+      disabled: isDotDot,
+      onClick: () => openDelete(entry),
     },
+    ...(props.side === 'remote' && !isDotDot
+      ? [
+          {
+            label: t('sftp.chmod'),
+            icon: 'lock',
+            onClick: () => openChmod(entry),
+          },
+        ]
+      : []),
     { separator: true },
     {
       label: t('sftp.props'),
       icon: 'info',
-      onClick: () =>
-        toast(
-          `${entry.name} — ${entry.kind === 'dir' ? t('sftp.folder') : formatBytes(entry.size)}${entry.attrs ? ' ' + entry.attrs : ''}`,
-        ),
+      onClick: () => openProps(entry),
     },
   ])
 }
@@ -281,10 +442,97 @@ function rowContextMenu(e: MouseEvent, entry: DirEntry) {
 function paneContextMenu(e: MouseEvent) {
   showContextMenu(e, [
     { label: t('common.refresh'), icon: 'refresh', onClick: reload },
-    { label: t('sftp.newFolder'), icon: 'folder', onClick: () => toast(t('sftp.newFolderToast')) },
+    {
+      label: t('sftp.newFolder'),
+      icon: 'folder',
+      disabled: props.side === 'remote' && props.session?.status !== 'connected',
+      onClick: () => openNewFolder(),
+    },
     { separator: true },
     { label: t('sftp.paste'), icon: 'copy', disabled: true },
   ])
+}
+
+/* ---------- 更改权限（远程，参考 Xftp） ---------- */
+
+const permDialog = ref(false)
+const permBusy = ref(false)
+const permName = ref('')
+const permPath = ref('')
+const permIsDir = ref(false)
+const permOctal = ref('644')
+const permRecursive = ref(false)
+
+const permInvalid = computed(() => !/^[0-7]{3}$/.test(permOctal.value))
+
+const PERM_ROLES = [0, 1, 2] as const
+const PERM_BITS = [0, 1, 2] as const
+const PERM_SHIFTS = [6, 3, 0]
+const PERM_MASKS = [4, 2, 1]
+
+/** role: 0=所有者 1=组 2=其他；bit: 0=读 1=写 2=执行 */
+function permChecked(role: 0 | 1 | 2, bit: 0 | 1 | 2): boolean {
+  const v = parseInt(permOctal.value, 8)
+  return Number.isNaN(v) ? false : (v >> PERM_SHIFTS[role]! & PERM_MASKS[bit]!) !== 0
+}
+function setPermBit(role: 0 | 1 | 2, bit: 0 | 1 | 2, on: boolean) {
+  let v = parseInt(permOctal.value, 8)
+  if (Number.isNaN(v)) v = 0
+  const mask = PERM_MASKS[bit]! << PERM_SHIFTS[role]!
+  v = on ? v | mask : v & ~mask
+  permOctal.value = (v & 0o777).toString(8).padStart(3, '0')
+}
+function onOctalInput() {
+  permOctal.value = permOctal.value.replace(/[^0-7]/g, '').slice(0, 3)
+}
+
+/** 从 "drwxr-xr-x" 形式的属性串解析八进制（缺省 644） */
+function octalFromAttrs(attrs: string | undefined): string {
+  const s = (attrs ?? '').slice(-9)
+  if (s.length < 9) return '644'
+  let v = 0
+  for (let i = 0; i < 9; i++) {
+    if (s[i] !== '-') v |= 1 << (8 - i)
+  }
+  return (v & 0o777).toString(8).padStart(3, '0')
+}
+
+async function openChmod(entry: DirEntry) {
+  if (props.side !== 'remote') return
+  if (props.session?.sid === undefined) {
+    toast(t('sftp.notConnected'), 'error')
+    return
+  }
+  permName.value = entry.name
+  permPath.value = targetPath(entry)
+  permIsDir.value = entry.kind === 'dir'
+  permRecursive.value = false
+  if (entry.attrs) {
+    permOctal.value = octalFromAttrs(entry.attrs)
+  } else {
+    try {
+      const st = await sftpStat(props.session.sid, permPath.value)
+      permOctal.value = octalFromAttrs(st?.attrs)
+    } catch {
+      permOctal.value = '644'
+    }
+  }
+  permDialog.value = true
+}
+
+async function applyChmod() {
+  if (!isTauri || props.session?.sid === undefined || permInvalid.value || permBusy.value) return
+  permBusy.value = true
+  try {
+    const n = await sftpChmod(props.session.sid, permPath.value, parseInt(permOctal.value, 8), permRecursive.value)
+    toast(t('sftp.chmodDone', { name: permName.value, n }), 'success')
+    permDialog.value = false
+    reload()
+  } catch (e) {
+    toast(String(e), 'error')
+  } finally {
+    permBusy.value = false
+  }
 }
 
 async function openEntry(entry: DirEntry) {
@@ -293,11 +541,65 @@ async function openEntry(entry: DirEntry) {
     return
   }
   if (entry.kind === 'dir') {
-    const child = joinPath(path.value, entry.name)
-    load(child)
-  } else {
-    toast(`打开文件「${entry.name}」将在后续版本提供（可配置默认编辑器）`)
+    load(joinPath(path.value, entry.name))
+    return
   }
+  if (!isTauri) {
+    // 浏览器预览模式无后端
+    toast(t('sftp.openFileToast', { name: entry.name }))
+    return
+  }
+  const full = targetPath(entry)
+  if (props.side === 'local') {
+    openPath(full).catch((e) => toast(String(e), 'error'))
+    return
+  }
+  // 远程文件：下载到临时目录后用系统默认程序打开
+  if (props.session?.status !== 'connected' || props.session?.sid === undefined) {
+    toast(t('sftp.notConnected'), 'error')
+    return
+  }
+  try {
+    const temp = await specialDir('temp')
+    const targetDir = `${temp.replace(/[\\/]+$/, '')}\\hishell-open`
+    fsMkdir(targetDir).catch(() => {})
+    const localPath = `${targetDir}\\${entry.name}`
+    const id = await transfers.submit({
+      sid: props.session.sid,
+      name: entry.name,
+      isDir: false,
+      direction: 'download',
+      localPath,
+      remotePath: full,
+      total: entry.size || 1,
+    })
+    if (!id) return
+    toast(t('sftp.openDownloading', { name: entry.name }))
+    waitForTransferDone(id, localPath)
+  } catch (e) {
+    toast(String(e), 'error')
+  }
+}
+
+/** 等传输完成后用系统程序打开 */
+function waitForTransferDone(id: string, localPath: string) {
+  const deadline = Date.now() + 120_000
+  const timer = window.setInterval(() => {
+    const it = transfers.items.find((x) => x.id === id)
+    if (!it) {
+      window.clearInterval(timer)
+      return
+    }
+    if (it.status === 'done') {
+      window.clearInterval(timer)
+      openPath(localPath).catch((e) => toast(String(e), 'error'))
+    } else if (it.status === 'failed' || it.status === 'cancelled') {
+      window.clearInterval(timer)
+      toast(t('sftp.openDownloadFailed', { name: it.name }), 'error')
+    } else if (Date.now() > deadline) {
+      window.clearInterval(timer)
+    }
+  }, 300)
 }
 
 function joinPath(base: string, name: string): string {
@@ -307,7 +609,11 @@ function joinPath(base: string, name: string): string {
     : base.replace(/[\\/]+$/, '') + '\\' + name
 }
 
-defineExpose({ counts })
+defineExpose({
+  counts,
+  /** 快捷下载等场景：获取当前选中的真实条目 */
+  getSelectedEntries: () => entries.value.filter((x) => selected.value.has(x.name) && x.name !== '..'),
+})
 </script>
 
 <template>
@@ -416,6 +722,121 @@ defineExpose({ counts })
     </div>
 
     <div v-if="loading" class="pane-loading">{{ t('sftp.loading') }}</div>
+
+    <!-- 重命名 / 新建文件夹 -->
+    <FDialog
+      :open="dialog === 'rename' || dialog === 'newFolder'"
+      :title="dialog === 'rename' ? t('sftp.rename') : t('sftp.newFolder')"
+      :width="420"
+      @update:open="(v: boolean) => (!v && (dialog = null))"
+    >
+      <FTextBox
+        v-model="dialogName"
+        :placeholder="t('sftp.namePlaceholder')"
+        spellcheck="false"
+        @keydown.enter="dialog === 'rename' ? applyRename() : applyNewFolder()"
+      />
+      <template #footer>
+        <FButton variant="subtle" @click="dialog = null">{{ t('common.cancel') }}</FButton>
+        <FButton
+          variant="accent"
+          :disabled="dialogBusy || !dialogName.trim()"
+          @click="dialog === 'rename' ? applyRename() : applyNewFolder()"
+        >
+          {{ t('common.confirm') }}
+        </FButton>
+      </template>
+    </FDialog>
+
+    <!-- 删除确认 -->
+    <FDialog
+      :open="dialog === 'delete'"
+      :title="t('sftp.deleteTitle')"
+      :width="440"
+      @update:open="(v: boolean) => (!v && (dialog = null))"
+    >
+      <div class="op-dialog-body">
+        <template v-if="deleteTargets.length === 1">
+          {{ t('sftp.deleteConfirmOne', { name: deleteTargets[0]?.name ?? '' }) }}
+        </template>
+        <template v-else>{{ t('sftp.deleteConfirmMany', { n: deleteTargets.length }) }}</template>
+        <div class="op-dialog-warn">{{ t('sftp.deleteWarn') }}</div>
+      </div>
+      <template #footer>
+        <FButton variant="subtle" @click="dialog = null">{{ t('common.cancel') }}</FButton>
+        <FButton variant="danger" :disabled="dialogBusy" @click="applyDelete">{{ t('common.delete') }}</FButton>
+      </template>
+    </FDialog>
+
+    <!-- 更改权限（远程） -->
+    <FDialog
+      :open="permDialog"
+      :title="t('sftp.chmod')"
+      :width="480"
+      @update:open="(v: boolean) => (!v && (permDialog = false))"
+    >
+      <div class="perm-head">
+        <span class="perm-name" :title="permName">{{ permName }}</span>
+        <span class="perm-octal-label">{{ t('sftp.chmodOctal') }}</span>
+        <input
+          class="perm-octal mono"
+          :value="permOctal"
+          spellcheck="false"
+          :class="{ invalid: permInvalid }"
+          @input="onOctalInput(); permOctal = ($event.target as HTMLInputElement).value.replace(/[^0-7]/g, '').slice(0, 3)"
+        />
+      </div>
+
+      <div class="perm-grid">
+        <div v-for="role in PERM_ROLES" :key="role" class="perm-col">
+          <div class="perm-col-title">{{ t(['sftp.chmodOwner', 'sftp.chmodGroup', 'sftp.chmodOther'][role]!) }}</div>
+          <label v-for="bit in PERM_BITS" :key="bit" class="perm-check">
+            <input
+              type="checkbox"
+              :checked="permChecked(role, bit)"
+              @change="setPermBit(role, bit, ($event.target as HTMLInputElement).checked)"
+            />
+            <span>{{ t(['sftp.permRead', 'sftp.permWrite', 'sftp.permExec'][bit]!) }}</span>
+          </label>
+        </div>
+      </div>
+
+      <label class="perm-recursive">
+        <input v-model="permRecursive" type="checkbox" />
+        <span>{{ t('sftp.chmodRecursive') }}</span>
+      </label>
+      <div class="perm-hint">{{ t('sftp.chmodHint') }}</div>
+
+      <template #footer>
+        <FButton variant="subtle" @click="permDialog = false">{{ t('common.cancel') }}</FButton>
+        <FButton variant="accent" :disabled="permBusy || permInvalid" @click="applyChmod">{{ t('common.confirm') }}</FButton>
+      </template>
+    </FDialog>
+
+    <!-- 属性 -->
+    <FDialog
+      :open="dialog === 'props'"
+      :title="t('sftp.props')"
+      :width="460"
+      @update:open="(v: boolean) => (!v && (dialog = null))"
+    >
+      <div v-if="propsLoading" class="op-dialog-body">{{ t('sftp.loading') }}</div>
+      <div v-else-if="propsData" class="props-grid">
+        <span>{{ t('sftp.colName') }}</span><span class="mono break">{{ propsData.name }}</span>
+        <span>{{ t('sftp.colType') }}</span><span>{{ propsData.kind === 'dir' ? t('sftp.folder') : fileKindLabel(propsData.kind || 'file', propsData.name || '') }}</span>
+        <span>{{ t('sftp.colSize') }}</span><span>{{ propsData.kind === 'dir' ? '—' : formatBytes(propsData.size ?? 0) }}<template v-if="propsData.kind !== 'dir'"> ({{ propsData.size }} {{ t('sftp.bytes') }})</template></span>
+        <span>{{ t('sftp.colMtime') }}</span><span>{{ propsData.mtime ? formatTime(propsData.mtime) : '—' }}</span>
+        <template v-if="propsData.attrs">
+          <span>{{ t('sftp.colAttrs') }}</span><span class="mono">{{ propsData.attrs }}</span>
+        </template>
+        <template v-if="propsData.readonly !== undefined && side === 'local'">
+          <span>{{ t('sftp.readonly') }}</span><span>{{ propsData.readonly ? t('common.yes') : t('common.no') }}</span>
+        </template>
+      </div>
+      <template #footer>
+        <FButton variant="accent" @click="dialog = null">{{ t('common.close') }}</FButton>
+      </template>
+    </FDialog>
   </div>
 </template>
 
@@ -653,5 +1074,117 @@ defineExpose({ counts })
   border: 1px solid var(--stroke-card);
   border-radius: var(--radius-sm);
   padding: 2px 8px;
+}
+.op-dialog-body {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.7;
+}
+.op-dialog-warn {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--danger);
+}
+.props-grid {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px 14px;
+  font-size: 12.5px;
+  align-items: center;
+}
+.props-grid > span:nth-child(odd) {
+  color: var(--text-secondary);
+  text-align: right;
+}
+.mono {
+  font-family: 'Cascadia Mono', Consolas, monospace;
+}
+.break {
+  word-break: break-all;
+}
+.perm-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.perm-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.perm-octal-label {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  flex: none;
+}
+.perm-octal {
+  width: 56px;
+  height: 30px;
+  border: 1px solid var(--stroke-control);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: center;
+  outline: none;
+  flex: none;
+}
+.perm-octal:focus {
+  border-color: var(--accent);
+}
+.perm-octal.invalid {
+  border-color: var(--danger);
+}
+.perm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.perm-col {
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: var(--bg-card);
+}
+.perm-col-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.perm-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  padding: 3px 0;
+  cursor: pointer;
+}
+.perm-check input,
+.perm-recursive input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+.perm-recursive {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.perm-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 </style>
