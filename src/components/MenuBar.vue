@@ -46,18 +46,6 @@ const menus = computed<MenuDef[]>(() => [
     ],
   },
   {
-    label: t('menus.view'),
-    children: [
-      { label: t('menus.terminalView'), command: 'view-terminal' },
-      { label: t('menus.fileView'), command: 'view-sftp', shortcut: 'Ctrl+Shift+F' },
-      { separator: true },
-      { label: t('common.settings'), command: 'open-settings' },
-      { separator: true },
-      { label: t('menus.lightTheme'), command: 'theme-light' },
-      { label: t('menus.darkTheme'), command: 'theme-dark' },
-    ],
-  },
-  {
     label: t('menus.tools'),
     children: [
       { label: t('menus.sessionManager'), command: 'session-manager' },

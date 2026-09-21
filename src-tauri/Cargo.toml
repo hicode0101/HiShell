@@ -1,7 +1,7 @@
 [package]
 name = "hishell"
-version = "0.1.0"
-description = "HiShell — Win11 Fluent 风格 SSH 客户端"
+version = "1.0.2"
+description = "HiShell — An SSH terminal tool favored by white-hat hackers."
 authors = ["HiShell"]
 edition = "2021"
 

@@ -5,6 +5,7 @@
  */
 import { isTauri, tauriInvoke } from './adapter'
 import type { DirEntry, SshProfile, ForwardRule } from './types'
+import pkg from '../../package.json'
 
 /* ==================== 事件订阅 ==================== */
 
@@ -116,12 +117,18 @@ export async function specialDir(kind: string): Promise<string> {
 
 export async function appInfo(): Promise<{ name: string; version: string; mode: string }> {
   if (isTauri) return tauriInvoke('app_info')
-  return { name: 'HiShell', version: '0.1.0', mode: '浏览器预览 (mock)' }
+  return { name: 'HiShell', version: pkg.version, mode: '浏览器预览 (mock)' }
 }
 
 /** 在系统文件管理器中打开配置目录 */
 export async function openConfigDir(): Promise<void> {
   if (isTauri) return tauriInvoke<void>('open_config_dir')
+  toastMockOnly()
+}
+
+/** 用系统默认浏览器打开 http/https 链接 */
+export async function openUrl(url: string): Promise<void> {
+  if (isTauri) return tauriInvoke<void>('open_url', { url })
   toastMockOnly()
 }
 
@@ -163,6 +170,11 @@ export async function sshConnect(profileId: string): Promise<number> {
 
 export async function sshDisconnect(sid: number): Promise<void> {
   return tauriInvoke<void>('ssh_disconnect', { sid })
+}
+
+/** 复制 SSH 隧道：在已有连接上开新 shell 通道，返回新 sid（不重新握手认证） */
+export async function sshDuplicateChannel(sid: number): Promise<number> {
+  return tauriInvoke<number>('ssh_duplicate_channel', { sid })
 }
 
 export async function sshWrite(sid: number, bytes: Uint8Array): Promise<void> {
@@ -297,11 +309,13 @@ export function transferTid(frontendId: string): number {
 /* ==================== 端口转发 ==================== */
 
 export async function forwardAdd(sid: number, rule: ForwardRule): Promise<void> {
-  return tauriInvoke<void>('forward_add', { sid, rule })
+  // 后端 ForwardRequest 结构：{ sid, rule }
+  return tauriInvoke<void>('forward_add', { req: { sid, rule } })
 }
 
 export async function forwardRemove(sid: number, ruleId: string): Promise<void> {
-  return tauriInvoke<void>('forward_remove', { sid, ruleId })
+  // 后端 ForwardRemoveRequest 结构：{ sid, ruleId }
+  return tauriInvoke<void>('forward_remove', { req: { sid, ruleId } })
 }
 
 export interface ForwardStatus {

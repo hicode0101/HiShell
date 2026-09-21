@@ -30,12 +30,15 @@ writeFileSync(confPath, JSON.stringify(conf, null, 2) + '\n')
 // 3. Cargo.toml（仅替换 [package] 段的第一个 version）
 const cargoPath = 'src-tauri/Cargo.toml'
 let cargo = readFileSync(cargoPath, 'utf8')
-const before = cargo
-cargo = cargo.replace(/^version\s*=\s*"[^"]*"/m, `version = "${version}"`)
-if (cargo === before) {
+if (!/^version\s*=\s*"[^"]*"/m.test(cargo)) {
   console.error('未能在 Cargo.toml 中找到 version 字段')
   process.exit(1)
 }
+const current = cargo.match(/^version\s*=\s*"([^"]*)"/m)[1]
+cargo = cargo.replace(/^version\s*=\s*"[^"]*"/m, `version = "${version}"`)
 writeFileSync(cargoPath, cargo)
+if (current === version) {
+  console.log(`Cargo.toml 已是 ${version}，无需修改`)
+}
 
 console.log(`版本已同步为 ${version}（package.json / tauri.conf.json / Cargo.toml）`)

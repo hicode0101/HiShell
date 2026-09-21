@@ -74,6 +74,8 @@ pub struct KiPrompt {
 /// 会话共享状态（Handler 与管理器共用）
 pub struct SessionShared {
     pub sid: u32,
+    /// 所属连接配置 id（认证提示"记住密码"时写入该配置的凭据）
+    pub profile_id: String,
     /// 事件发送（ssh-prompt 等）
     pub emit: EmitFn,
     pub host: String,
@@ -204,17 +206,21 @@ pub struct SessionHandle {
     pub sid: u32,
     pub profile_id: String,
     pub shared: Arc<SessionShared>,
-    /// russh Handle（不可克隆，经异步互斥锁共享）
+    /// russh Handle（不可克隆，经异步互斥锁共享）。
+    /// "复制 SSH 隧道"出的别名会话与父会话共享同一个 Handle（同一条 SSH 连接）。
     pub handle: Arc<AsyncMutex<Option<Handle<SshHandler>>>>,
     pub closed: AtomicBool,
     /// 每会话写入序列化通道
     pub write_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
-    /// 端口转发管理器
+    /// 端口转发管理器（别名会话与父会话共享，对齐"复制 SSH 隧道"语义）
     pub forwards: Arc<super::forward::ForwardManager>,
     /// SFTP 会话缓存（懒创建）
     pub sftp: Mutex<Option<Arc<SftpSession>>>,
     /// 终端 resize 请求通道（由数据泵任务消费）
     pub resize_tx: tokio::sync::mpsc::UnboundedSender<(u32, u32)>,
+    /// 是否为"复制 SSH 隧道"产生的别名会话：断开时只关自己的通道，
+    /// 不发送 SSH DISCONNECT、不停止共享的端口转发
+    pub is_alias: bool,
 }
 
 pub struct SessionManager {
@@ -430,8 +436,14 @@ async fn auth_password(
         }
         let save = answer.get("remember").and_then(|v| v.as_bool()).unwrap_or(false);
         if save {
-            *shared.password.lock().unwrap() = Some(pwd.clone());
+            // 记住密码：真正写入系统凭据管理器（keyring），下次连接免输入
+            let mut bundle = secrets::get(&shared.profile_id).unwrap_or_default();
+            bundle.password = Some(pwd.clone());
+            let _ = secrets::set(&shared.profile_id, &bundle);
+            let _ = crate::profile_store::mark_stored_password(&shared.profile_id);
+            crate::logger::log(&format!("profile={} 记住密码已存入凭据管理器", shared.profile_id));
         }
+        *shared.password.lock().unwrap() = Some(pwd.clone());
         password = Some(pwd);
     }
     handle
@@ -543,6 +555,7 @@ pub async fn connect_and_auth(shared: Arc<SessionShared>, profile: Profile) -> A
         } else {
             Arc::new(SessionShared {
                 sid: shared.sid,
+                profile_id: hop.id.clone(),
                 emit: shared.emit.clone(),
                 host: hop.host.clone(),
                 port: hop.port,

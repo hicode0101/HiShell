@@ -21,7 +21,7 @@ import { useTransfersStore } from '../stores/transfers'
 import { useProfilesStore, parseQuickConnect } from '../stores/profiles'
 import { useSettingsStore } from '../stores/settings'
 import { defaultProfile, type SessionTab } from '../api/types'
-import { openConfigDir } from '../api/backend'
+import { appInfo, openConfigDir, openUrl } from '../api/backend'
 import { t } from '../i18n'
 import { tauriWindow } from '../api/adapter'
 
@@ -39,12 +39,25 @@ const sessionManagerOpen = ref(false)
 const userKeysOpen = ref(false)
 const hotkeysOpen = ref(false)
 const sftpRef = ref<InstanceType<typeof SftpView>>()
+/** 后端真实版本号（关于界面显示用，随程序集版本走） */
+const appVersion = ref('')
+
+onMounted(() => {
+  appInfo()
+    .then((i) => (appVersion.value = i.version))
+    .catch(() => {})
+})
 
 /** 向当前激活标签派发终端命令（清屏/复制/粘贴/全选/搜索） */
 function activeTabCommand(cmd: string) {
   const tab = sessions.activeTab
   if (!tab) return
   window.dispatchEvent(new CustomEvent('hishell-tab-command', { detail: { tabId: tab.id, cmd } }))
+}
+
+/** 关于对话框：官网链接用系统默认浏览器打开 */
+function openSite() {
+  openUrl(t('main.aboutUrl')).catch((e) => toast(String(e), 'error'))
 }
 
 function command(raw: string) {
@@ -61,7 +74,8 @@ function command(raw: string) {
       const info = parseQuickConnect(payload)
       if (!info) return
       const p = defaultProfile({ name: info.host, host: info.host, port: info.port, username: info.username })
-      sessions.createSession(p)
+      // 先持久化配置（后端 ssh_connect 按 id 读取），再建会话
+      void profiles.upsert(p).then((saved) => sessions.createSession(saved))
       break
     }
     case 'new-sftp': {
@@ -189,6 +203,9 @@ function command(raw: string) {
     case 'about':
       aboutOpen.value = true
       break
+    case 'open-site':
+      openSite()
+      break
     default:
       if (name && !raw.includes(':')) toast(t('main.later', { name }))
   }
@@ -302,15 +319,9 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKeydown)
 })
 
-/* 首次启动自动打开一个演示会话，便于预览（对应参考截图） */
+/* 启动时仅加载连接配置（供会话管理器/快速连接使用），不自动打开会话 —— 显示欢迎页 */
 onMounted(async () => {
   await profiles.init()
-  if (sessions.tabs.length === 0 && profiles.profiles.length > 0) {
-    sessions.createSession(profiles.profiles[0]!)
-    const second = profiles.profiles[1]
-    if (second) sessions.createSession(second)
-    sessions.activate(sessions.tabs[0]!.id)
-  }
 })
 
 const activeTab = computed(() => sessions.activeTab)
@@ -364,6 +375,7 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
         <div class="empty-desc">{{ t('main.welcomeDesc') }}</div>
         <div class="empty-actions">
           <FButton variant="accent" icon="plus" @click="command('new-connection')">{{ t('common.newConnection') }}</FButton>
+          <FButton icon="folder" @click="command('session-manager')">{{ t('menus.sessionManager') }}</FButton>
           <FButton icon="settings" @click="command('open-settings')">{{ t('main.openSettings') }}</FButton>
         </div>
       </div>
@@ -401,8 +413,16 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
       <div class="about-body">
         <div class="about-logo">&gt;_</div>
         <div>
-          <div class="about-name">{{ t('main.aboutName') }}</div>
-          <div class="about-desc">{{ t('main.aboutDesc') }}</div>
+          <div class="about-name">
+            {{ t('main.aboutName') }}<span v-if="appVersion" class="about-version">{{ appVersion }}</span>
+          </div>
+          <div class="about-desc">
+            <div>{{ t('main.aboutDesc') }}</div>
+            <div>
+              {{ t('main.aboutSiteLabel') }}：<a class="about-link" href="#" @click.prevent="openSite">{{ t('main.aboutUrl') }}</a>
+            </div>
+            <div>{{ t('main.aboutAuthor') }}</div>
+          </div>
         </div>
       </div>
       <template #footer>
@@ -500,6 +520,13 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
   font-weight: 600;
   margin-bottom: 6px;
 }
+.about-version {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  font-family: 'Cascadia Mono', Consolas, monospace;
+}
 .hotkeys-list {
   display: flex;
   flex-direction: column;
@@ -528,6 +555,14 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
   color: var(--text-secondary);
   font-size: 12.5px;
   line-height: 1.7;
-  white-space: pre-line;
+}
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  word-break: break-all;
+}
+.about-link:hover {
+  text-decoration: underline;
 }
 </style>

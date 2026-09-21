@@ -55,12 +55,30 @@ pub async fn ssh_resize(sessions: State<'_, Sessions>, sid: u32, cols: u32, rows
 pub async fn ssh_disconnect(app: AppHandle, sessions: State<'_, Sessions>, sid: u32) -> Result<(), String> {
     let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
     session.closed.store(true, Ordering::Relaxed);
-    let mut guard = session.handle.lock().await;
-    if let Some(h) = guard.as_mut() {
-        let _ = h.disconnect(russh::Disconnect::ByApplication, "user disconnect", "en").await;
+    // 复制 SSH 隧道出的别名会话：只关自己的通道，绝不能发送 SSH DISCONNECT
+    // （那会断开共享连接，父会话与兄弟别名全部掉线）
+    if !session.is_alias {
+        let mut guard = session.handle.lock().await;
+        if let Some(h) = guard.as_mut() {
+            let _ = h.disconnect(russh::Disconnect::ByApplication, "user disconnect", "en").await;
+        }
     }
     ssh::cleanup_session(&sessions.0, sid, &app, "用户断开");
     Ok(())
+}
+
+/// 复制 SSH 隧道：在已有连接上开一个新 shell 通道，返回新 sid。
+/// 不重新握手/认证；共享连接上下文与端口转发；父连接断开时别名一并掉线。
+#[tauri::command]
+pub async fn ssh_duplicate_channel(
+    app: AppHandle,
+    sessions: State<'_, Sessions>,
+    sid: u32,
+) -> Result<u32, String> {
+    let Some(parent) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
+    ssh::open_shell_alias(app, sessions.0.clone(), parent)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -93,6 +111,7 @@ pub async fn ssh_test(
 
     let shared = std::sync::Arc::new(ssh::manager::SessionShared {
         sid: 0,
+        profile_id: profile.id.clone(),
         emit: std::sync::Arc::new(|_: &str, _: serde_json::Value| {}),
         host: profile.host.clone(),
         port: profile.port,

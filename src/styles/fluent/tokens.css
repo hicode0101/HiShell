@@ -41,6 +41,12 @@ html[data-theme='light'] {
   --danger: #c42b1c;
   --danger-hover: #d13438;
 
+  /* 连接类型色（工具栏图标 / 标签顶线，主题无关） */
+  --type-local: #0078d4;
+  --type-ssh: #107c10;
+  --type-serial: #d13438;
+  --type-telnet: #f7630c;
+
   /* 终端（浅色主题下终端仍偏深底，遵循惯例） */
   --term-bg: #0c0c0c;
   --term-fg: #cccccc;

@@ -1,7 +1,7 @@
 /** 会话标签状态：多标签、激活、视图模式、连接状态机（tauri 真实连接 / mock 模拟） */
 import { defineStore } from 'pinia'
 import { isTauri } from '../api/adapter'
-import { localStart, localStop, sshConnect, sshDisconnect } from '../api/backend'
+import { localStart, localStop, sshConnect, sshDisconnect, sshDuplicateChannel } from '../api/backend'
 import type { SessionTab, SshProfile, ViewMode } from '../api/types'
 import { t } from '../i18n'
 
@@ -47,6 +47,21 @@ export const useSessionsStore = defineStore('sessions', {
   actions: {
     activate(id: string) {
       this.activeTabId = id
+    },
+    /** 拖拽排序：把 dragId 标签移动到 targetId 之前/之后 */
+    moveTab(dragId: string, targetId: string, before: boolean) {
+      if (dragId === targetId) return
+      const from = this.tabs.findIndex((t) => t.id === dragId)
+      const targetIdx = this.tabs.findIndex((t) => t.id === targetId)
+      if (from < 0 || targetIdx < 0) return
+      const [tab] = this.tabs.splice(from, 1)
+      let insertIdx = this.tabs.findIndex((t) => t.id === targetId)
+      if (insertIdx < 0) {
+        this.tabs.splice(from, 0, tab) // 目标消失则原位放回
+        return
+      }
+      if (!before) insertIdx += 1
+      this.tabs.splice(insertIdx, 0, tab)
     },
     openConnectDialog(profileId?: string) {
       this.connectDialogProfileId = profileId ?? ''
@@ -101,9 +116,41 @@ export const useSessionsStore = defineStore('sessions', {
       }
       return tab
     },
+    /**
+     * 复制 SSH 隧道：新建一个标签，复用源标签已建立的 SSH 连接
+     * （后端在同一连接上开新 shell 通道，不重新握手认证）。
+     * 源连接断开时所有别名一起掉线；关闭别名不影响源连接。
+     */
+    async createAliasSession(sourceTabId: string): Promise<SessionTab | undefined> {
+      const src = this.tabs.find((x) => x.id === sourceTabId)
+      if (!src || src.sid === undefined || !isTauri) return undefined
+      const raw = makeTab({
+        title: src.title,
+        address: src.address,
+        profileId: src.profileId,
+        status: 'connecting',
+      })
+      this.tabs.push(raw)
+      const tab = this.tabs[this.tabs.length - 1] as SessionTab
+      this.activeTabId = tab.id
+      try {
+        const newSid = await sshDuplicateChannel(src.sid)
+        tab.sid = newSid
+        // 状态事件可能早于 sid 回传（缓冲机制同 createSession）
+        const pending = this.pendingStatus[newSid]
+        if (pending) {
+          tab.status = pending.status
+          if (pending.message) tab.statusMessage = pending.message
+          delete this.pendingStatus[newSid]
+        }
+      } catch (e) {
+        tab.status = 'disconnected'
+        tab.statusMessage = String(e)
+      }
+      return tab
+    },
     /** 重连：复用标签，重置后端会话 */
-    async reconnect(tabId: string) {
-      const tab = this.tabs.find((x) => x.id === tabId)
+    async reconnect(tabId: string) {      const tab = this.tabs.find((x) => x.id === tabId)
       if (!tab || tab.kind !== 'session') return
       if (tab.sid !== undefined && isTauri) {
         await sshDisconnect(tab.sid).catch(() => {})
@@ -135,6 +182,7 @@ export const useSessionsStore = defineStore('sessions', {
       if (tab.sid !== undefined && isTauri) {
         await sshDisconnect(tab.sid).catch(() => {})
       }
+      tab.sid = undefined // 后端会话已销毁，旧 sid 置空
       tab.status = 'disconnected'
     },
     /** 由 ssh-status 事件驱动 */

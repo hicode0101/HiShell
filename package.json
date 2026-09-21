@@ -1,8 +1,8 @@
 {
   "name": "hishell",
   "private": true,
-  "version": "0.1.0",
-  "description": "HiShell - Win11 Fluent 风格的 SSH 客户端（Tauri 2 + Vue 3）",
+  "version": "1.0.2",
+  "description": "HiShell - An SSH terminal tool favored by white-hat hackers.",
   "type": "module",
   "scripts": {
     "dev": "vite",

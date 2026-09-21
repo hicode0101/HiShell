@@ -160,7 +160,15 @@ async function testConnection() {
   }
 }
 
-function saveProfile() {
+/** 表单中已输入的明文凭据 → 传给后端存入系统凭据管理器（留空 = 保持已存值不变） */
+function secretsFromForm() {
+  const secrets: { password?: string; passphrase?: string } = {}
+  if (form.password) secrets.password = form.password
+  if (form.privateKeyPassphrase) secrets.passphrase = form.privateKeyPassphrase
+  return Object.keys(secrets).length ? secrets : undefined
+}
+
+async function saveProfile() {
   form.auth = authKind.value
   form.proxy = buildProxy()
   if (!form.host) {
@@ -168,12 +176,12 @@ function saveProfile() {
     return
   }
   if (!form.name) form.name = form.host
-  profilesStore.upsert(JSON.parse(JSON.stringify(form)))
+  await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
   toast(t('connect.savedToast', { name: form.name }), 'success')
   open.value = false
 }
 
-function connectNow() {
+async function connectNow() {
   form.auth = authKind.value
   form.proxy = buildProxy()
   if (!form.host) {
@@ -181,8 +189,9 @@ function connectNow() {
     return
   }
   if (!form.name) form.name = form.host
-  profilesStore.upsert(JSON.parse(JSON.stringify(form)))
-  sessions.createSession(JSON.parse(JSON.stringify(form)))
+  // 先持久化（含凭据），再发起连接——避免后端尚未读到该配置的竞态
+  const saved = await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
+  sessions.createSession(JSON.parse(JSON.stringify(saved)))
   open.value = false
 }
 </script>

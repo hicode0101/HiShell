@@ -27,19 +27,19 @@ function quickConnect() {
   <div class="toolbar">
     <!-- 新建本地终端 -->
     <button class="tb-btn" :title="t('toolbar.newLocalTerminal')" @click="emit('new-local')">
-      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+      <svg class="ic-local" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
         <rect x="3" y="4.5" width="14" height="11" rx="1.5" /><path d="M6.5 8l2.8 2.3-2.8 2.3M11.2 13h3" />
       </svg>
     </button>
     <!-- 新建 SSH 连接 -->
     <button class="tb-btn" :title="t('toolbar.newConnection')" @click="emit('new-connection')">
-      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+      <svg class="ic-ssh" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
         <rect x="3" y="4.5" width="14" height="11" rx="1.5" /><path d="M6.5 8l2.8 2.3-2.8 2.3M11.2 13h3" /><path d="M16.5 13.5v5M14 16h5" stroke-width="1.5" />
       </svg>
     </button>
     <!-- 新建 Serial 终端 -->
     <button class="tb-btn" :title="t('toolbar.newSerial')" @click="emit('new-serial')">
-      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+      <svg class="ic-serial" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M6.2 4.5h7.6l2 6.4a1.7 1.7 0 0 1-1.6 2.2H5.8a1.7 1.7 0 0 1-1.6-2.2l2-6.4z" />
         <path d="M7.4 7.6h.01M10 7.6h.01M12.6 7.6h.01M6.7 10.3h.01M13.3 10.3h.01" stroke-width="1.8" />
         <path d="M10 13.1v3.4" />
@@ -47,7 +47,7 @@ function quickConnect() {
     </button>
     <!-- 新建 Telnet 终端 -->
     <button class="tb-btn" :title="t('toolbar.newTelnet')" @click="emit('new-telnet')">
-      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+      <svg class="ic-telnet" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
         <circle cx="10" cy="10" r="6.5" />
         <ellipse cx="10" cy="10" rx="2.9" ry="6.5" />
         <path d="M3.5 10h13M4.7 6.4h10.6M4.7 13.6h10.6" />
@@ -115,6 +115,19 @@ function quickConnect() {
 .tb-btn:disabled {
   color: var(--text-disabled);
   cursor: default;
+}
+/* 类型色图标（与对应标签顶线一致） */
+.ic-local {
+  color: var(--type-local);
+}
+.ic-ssh {
+  color: var(--type-ssh);
+}
+.ic-serial {
+  color: var(--type-serial);
+}
+.ic-telnet {
+  color: var(--type-telnet);
 }
 .tb-divider {
   width: 1px;

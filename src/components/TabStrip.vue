@@ -1,10 +1,50 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useSessionsStore } from '../stores/sessions'
+import { useProfilesStore } from '../stores/profiles'
 import { showContextMenu } from '../ui'
 import { t } from '../i18n'
 import type { SessionTab } from '../api/types'
 
 const sessions = useSessionsStore()
+const profiles = useProfilesStore()
+
+/* ---------- 标签拖拽排序 ---------- */
+const dragId = ref('')
+const dropTargetId = ref('')
+const dropBefore = ref(false)
+
+function onDragStart(e: DragEvent, tab: SessionTab) {
+  dragId.value = tab.id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('application/x-hishell-tab', tab.id)
+  }
+}
+
+function onDragOver(e: DragEvent, tab: SessionTab) {
+  if (!dragId.value) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  dropBefore.value = e.clientX < rect.left + rect.width / 2
+  dropTargetId.value = tab.id === dragId.value ? '' : tab.id
+}
+
+function onDrop(e: DragEvent, tab: SessionTab) {
+  if (dragId.value && dropTargetId.value) {
+    sessions.moveTab(dragId.value, dropTargetId.value, dropBefore.value)
+  }
+  clearDrag()
+}
+
+function onDragEnd() {
+  clearDrag()
+}
+
+function clearDrag() {
+  dragId.value = ''
+  dropTargetId.value = ''
+  dropBefore.value = false
+}
 
 function emit(name: string) {
   window.dispatchEvent(new CustomEvent('hishell-command', { detail: name }))
@@ -13,12 +53,37 @@ function emit(name: string) {
 function tabContextMenu(e: MouseEvent, tab: SessionTab) {
   showContextMenu(e, [
     { label: t('tabs.rename'), icon: 'edit', onClick: () => emit('rename-tab:' + tab.id) },
-    { label: t('tabs.copyAddress'), icon: 'copy', onClick: () => navigator.clipboard?.writeText(tab.address) },
+    ...(tab.kind === 'session' && tab.profileId
+      ? [
+          {
+            label: t('tabs.duplicate'),
+            icon: 'copy',
+            onClick: () => duplicateTab(tab),
+          },
+        ]
+      : []),
+    ...(tab.kind === 'session' && tab.sid !== undefined && tab.status === 'connected'
+      ? [
+          {
+            label: t('tabs.duplicateChannel'),
+            icon: 'network',
+            onClick: () => sessions.createAliasSession(tab.id),
+          },
+        ]
+      : []),
     { separator: true },
     { label: t('tabs.close'), shortcut: 'Ctrl+W', icon: 'close', onClick: () => sessions.closeTab(tab.id) },
     { label: t('tabs.closeOthers'), onClick: () => sessions.closeOthers(tab.id) },
     { label: t('tabs.closeRight'), onClick: () => sessions.closeToRight(tab.id) },
   ])
+}
+
+/** 复制会话：再开一个同服务器的新连接（复用同一配置与已存凭据，无需重新输入密码） */
+function duplicateTab(tab: SessionTab) {
+  if (tab.kind !== 'session' || !tab.profileId) return
+  const p = profiles.byId(tab.profileId)
+  if (!p) return
+  sessions.createSession(JSON.parse(JSON.stringify(p)))
 }
 
 function onStripContext(e: MouseEvent) {
@@ -27,10 +92,22 @@ function onStripContext(e: MouseEvent) {
     { label: t('common.newSftp'), icon: 'folder', onClick: () => emit('new-sftp') },
   ])
 }
+
+/** 标签顶线颜色跟随连接类型（与工具栏图标一致） */
+function tabAccent(tab: SessionTab): string {
+  switch (tab.kind) {
+    case 'local':
+      return 'var(--type-local)'
+    case 'session':
+      return 'var(--type-ssh)'
+    default:
+      return 'var(--accent)'
+  }
+}
 </script>
 
 <template>
-  <div class="tabstrip" @contextmenu="onStripContext" @auxclick.middle="sessions.closeTab(sessions.activeTabId)">
+  <div class="tabstrip" @contextmenu="onStripContext" @auxclick.middle="sessions.closeTab(sessions.activeTabId)" @dragover.prevent>
     <TransitionGroup name="tab">
       <div
         v-for="tab in sessions.tabs"
@@ -39,11 +116,20 @@ function onStripContext(e: MouseEvent) {
         :class="{
           active: tab.id === sessions.activeTabId,
           settings: tab.kind === 'settings',
+          dragging: dragId === tab.id,
+          'drop-before': dropTargetId === tab.id && dropBefore,
+          'drop-after': dropTargetId === tab.id && !dropBefore,
         }"
+        :style="{ '--tab-accent': tabAccent(tab) }"
         :title="tab.address || tab.title"
+        draggable="true"
         @click="sessions.activate(tab.id)"
         @auxclick.middle.stop="sessions.closeTab(tab.id)"
         @contextmenu.stop="tabContextMenu($event, tab)"
+        @dragstart="onDragStart($event, tab)"
+        @dragover="onDragOver($event, tab)"
+        @drop.prevent="onDrop($event, tab)"
+        @dragend="onDragEnd"
       >
         <span v-if="tab.kind !== 'settings'" class="dot" :class="tab.status" />
         <svg v-else class="dot gear" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
@@ -104,7 +190,17 @@ function onStripContext(e: MouseEvent) {
   right: 12px;
   height: 2.5px;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--tab-accent, var(--accent));
+}
+/* 拖拽排序反馈 */
+.tab.dragging {
+  opacity: 0.4;
+}
+.tab.drop-before {
+  box-shadow: -3px 0 0 0 var(--tab-accent, var(--accent));
+}
+.tab.drop-after {
+  box-shadow: 3px 0 0 0 var(--tab-accent, var(--accent));
 }
 .dot {
   width: 8px;

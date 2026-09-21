@@ -20,6 +20,14 @@ let container: HTMLElement | null = null
 let unlistenData: (() => void) | null = null
 let unlistenLocal: (() => void) | null = null
 
+/**
+ * 终端状态横幅：必须用 \r\n 换行——xterm 的裸 LF 只下移不回列，
+ * 会导致横幅和紧随其后的服务器输出从光标所在列开始（缩进错位）。
+ */
+function writeStatusLine(entry: ReturnType<typeof terminalEntry>, color: '90' | '91' | '92', text: string) {
+  entry?.term.write(`\r\n\x1b[${color}m[HiShell] ${text}\x1b[0m\r\n\r\n`)
+}
+
 /** 选项卡功能区事件（清屏/搜索/复制/粘贴/全选），按 tabId 过滤 */
 function onTabCommand(e: Event) {
   const { tabId, cmd } = (e as CustomEvent<{ tabId: string; cmd: string }>).detail
@@ -60,11 +68,7 @@ onMounted(() => {
   attachTerminal(props.tab, container)
   // 挂载时已在连接中：给出可见反馈（避免黑屏静默）
   if (isTauri && props.tab.status === 'connecting') {
-    terminalEntry(props.tab.id)?.term.write(
-      `[90m[HiShell] ${t('terminal.connecting', { addr: props.tab.address })}...[0m
-
-`,
-    )
+    writeStatusLine(terminalEntry(props.tab.id), '90', t('terminal.connecting', { addr: props.tab.address }) + '...')
   }
 })
 // 尺寸变化同步到后端 PTY（SSH 会话或本地终端）
@@ -86,22 +90,12 @@ watch(
     if (!entry) return
     if (status === 'connected') {
       if (props.tab.kind === 'local') return // 本地终端开箱即连，无需横幅
-      entry.term.write(`
-
-[92m[HiShell] ${t('terminal.connected')}[0m
-
-`)
+      writeStatusLine(entry, '92', t('terminal.connected'))
     } else if (status === 'disconnected') {
       const text = props.tab.kind === 'local'
         ? message || t('terminal.localExited')
         : `${t('terminal.disconnected')}${message ? ' — ' + message : ''}`
-      entry.term.write(
-        `
-
-[91m[HiShell] ${text}[0m
-
-`,
-      )
+      writeStatusLine(entry, '91', text)
     }
   },
 )
@@ -130,9 +124,11 @@ watch(
     if (entry && !entry.wired) {
       entry.wired = true
       const encoder = new TextEncoder()
+      // 按标签 id（跨重连不变）动态解析当前 sid 写入——重连后旧闭包里的 sid 已失效
+      const tabId = props.tab.id
       entry.term.onData((d) => {
-        const tab = useSessionsStore().tabs.find((t) => t.sid === sid)
-        if (tab?.sid !== undefined) {
+        const tab = useSessionsStore().tabs.find((x) => x.id === tabId)
+        if (tab?.sid !== undefined && isTauri) {
           sshWrite(tab.sid, encoder.encode(d)).catch(() => {})
         }
       })

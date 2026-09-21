@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { t } from '../i18n'
 
 const props = withDefaults(
@@ -16,6 +16,10 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const focused = ref(false)
+/** password 类型：是否以明文显示（false=圆点掩码） */
+const reveal = ref(false)
+
+const inputType = computed(() => (props.type === 'password' ? (reveal.value ? 'text' : 'password') : props.type))
 
 function onInput(e: Event) {
   emit('update:modelValue', (e.target as HTMLInputElement).value)
@@ -26,7 +30,7 @@ function onInput(e: Event) {
   <div class="f-textbox" :class="{ focused, disabled, empty: !modelValue }">
     <input
       class="f-textbox-input"
-      :type="type"
+      :type="inputType"
       :value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
@@ -34,6 +38,24 @@ function onInput(e: Event) {
       @focus="focused = true"
       @blur="focused = false"
     />
+    <!-- 密码可见性切换：掩码时显示闭眼（点击查看），明文时显示睁眼（点击隐藏） -->
+    <button
+      v-if="type === 'password'"
+      class="f-textbox-eye"
+      :title="reveal ? t('ui.hidePassword') : t('ui.showPassword')"
+      tabindex="-1"
+      @click="reveal = !reveal"
+    >
+      <svg v-if="reveal" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2.2 10s3-5.2 7.8-5.2S17.8 10 17.8 10s-3 5.2-7.8 5.2S2.2 10 2.2 10z" />
+        <circle cx="10" cy="10" r="2.3" />
+      </svg>
+      <svg v-else width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4.3 5.6C3 6.8 2.2 8.4 2.2 10c0 0 3 5.2 7.8 5.2 1.5 0 2.8-.5 3.9-1.2M8 5.1c.6-.2 1.3-.3 2-.3 4.8 0 7.8 5.2 7.8 5.2s-.8 1.6-2.1 2.9" />
+        <path d="M8.4 8.4a2.3 2.3 0 0 0 3.2 3.2" />
+        <path d="M3.5 3.5l13 13" />
+      </svg>
+    </button>
     <button
       v-if="clearable && modelValue && !disabled"
       class="f-textbox-clear"
@@ -82,20 +104,24 @@ function onInput(e: Event) {
 .f-textbox-input::placeholder {
   color: var(--text-tertiary);
 }
+.f-textbox-eye,
 .f-textbox-clear {
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex: none;
+  margin-left: 2px;
 }
+.f-textbox-eye:hover,
 .f-textbox-clear:hover {
   background: var(--bg-alt-hover);
+  color: var(--text-primary);
 }
 </style>

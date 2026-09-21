@@ -60,7 +60,7 @@ function ruleSummary(r: ForwardRule): string {
   return `${r.bindHost}:${r.bindPort} → ${r.targetHost}:${r.targetPort}`
 }
 
-function addRule() {
+async function addRule() {
   if (!profile.value) return
   if (!validPort(form.bindPort)) {
     toast(t('ports.portInvalid'), 'error')
@@ -81,25 +81,40 @@ function addRule() {
     targetPort: newType.value === 'dynamic' ? undefined : Number(form.targetPort),
     description: form.description.trim() || undefined,
   }
-  profile.value.forwardedPorts.push(rule)
-  profiles.upsert(JSON.parse(JSON.stringify(profile.value)))
-  // 会话在线时实时下发（M3 russh 转发生效）
   const sid = tab.value?.sid
-  if (sid !== undefined && tab.value?.status === 'connected') {
-    forwardAdd(sid, rule).catch((e) => toast(String(e), 'error'))
+  const live = sid !== undefined && tab.value?.status === 'connected'
+  // 会话在线：先真实下发，成功才入库；失败提示并回滚，避免下次连接反复报错
+  if (live) {
+    try {
+      await forwardAdd(sid!, rule)
+    } catch (e) {
+      toast(String(e), 'error')
+      return
+    }
   }
-  toast(t('ports.toastAdded'), 'success')
+  profile.value.forwardedPorts.push(rule)
+  await profiles.upsert(JSON.parse(JSON.stringify(profile.value)))
+  toast(live ? t('ports.toastAdded') : t('ports.toastAddedSavedOnly'), 'success')
   resetForm()
 }
 
-function removeRule(id: string) {
+async function removeRule(id: string) {
   if (!profile.value) return
+  const snapshot = [...profile.value.forwardedPorts]
   profile.value.forwardedPorts = profile.value.forwardedPorts.filter((r) => r.id !== id)
-  profiles.upsert(JSON.parse(JSON.stringify(profile.value)))
   const sid = tab.value?.sid
-  if (sid !== undefined && tab.value?.status === 'connected') {
-    forwardRemove(sid, id).catch((e) => toast(String(e), 'error'))
+  const live = sid !== undefined && tab.value?.status === 'connected'
+  if (live) {
+    try {
+      await forwardRemove(sid!, id)
+    } catch (e) {
+      profile.value.forwardedPorts = snapshot // 下发失败回滚
+      await profiles.upsert(JSON.parse(JSON.stringify(profile.value)))
+      toast(String(e), 'error')
+      return
+    }
   }
+  await profiles.upsert(JSON.parse(JSON.stringify(profile.value)))
   toast(t('ports.toastDeleted'))
 }
 </script>

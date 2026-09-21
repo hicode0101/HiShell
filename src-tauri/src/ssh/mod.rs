@@ -56,6 +56,7 @@ async fn run_session(app: AppHandle, mgr: Arc<SessionManager>, sid: u32, profile
     let app_for_emit = app.clone();
     let shared = Arc::new(SessionShared {
         sid,
+        profile_id: profile.id.clone(),
         emit: Arc::new(move |event: &str, payload: serde_json::Value| {
             let _ = app_for_emit.emit(event, payload);
         }),
@@ -83,6 +84,7 @@ async fn run_session(app: AppHandle, mgr: Arc<SessionManager>, sid: u32, profile
         forwards: Arc::new(forward::ForwardManager::new()),
         sftp: Mutex::new(None),
         resize_tx,
+        is_alias: false,
     });
     mgr.insert(session.clone());
 
@@ -154,6 +156,82 @@ async fn run_session(app: AppHandle, mgr: Arc<SessionManager>, sid: u32, profile
     Ok(())
 }
 
+/// 在已连接的会话上开一个新 shell 通道（"复制 SSH 隧道"）：
+/// 复用同一条 SSH 连接（不重新握手），共享提示上下文与端口转发。
+/// 返回新 sid，终端数据经 ssh-data 事件按新 sid 推送。
+pub async fn open_shell_alias(
+    app: AppHandle,
+    mgr: Arc<SessionManager>,
+    parent: Arc<SessionHandle>,
+) -> AppResult<u32> {
+    {
+        let guard = parent.handle.lock().await;
+        if guard.is_none() {
+            return Err(AppError::msg("会话未连接"));
+        }
+    }
+    let term = crate::profile_store::by_id(&parent.profile_id)
+        .map(|p| p.term)
+        .unwrap_or_else(|| "xterm-256color".into());
+
+    let new_sid = manager::next_sid();
+    crate::logger::log(&format!("sid={new_sid} 复制 SSH 隧道（父 sid={}）", parent.sid));
+
+    let (write_tx, mut write_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let (resize_tx, resize_rx) = mpsc::unbounded_channel::<(u32, u32)>();
+    let alias = Arc::new(SessionHandle {
+        sid: new_sid,
+        profile_id: parent.profile_id.clone(),
+        shared: parent.shared.clone(),     // 同一条连接的共享上下文（含 closed 联动）
+        handle: parent.handle.clone(),     // 复用同一 russh 连接，不重新握手
+        closed: AtomicBool::new(false),
+        write_tx,
+        forwards: parent.forwards.clone(), // 共用端口转发
+        sftp: Mutex::new(None),
+        resize_tx,
+        is_alias: true,
+    });
+    mgr.insert(alias.clone());
+
+    // 在共享连接上打开新 shell 通道（PTY + shell）
+    let shell_channel = {
+        let mut guard = alias.handle.lock().await;
+        let handle = guard.as_mut().ok_or_else(|| AppError::msg("会话未连接"))?;
+        let channel = handle.channel_open_session().await?;
+        channel
+            .request_pty(true, &term, 80, 24, 0, 0, &[])
+            .await
+            .map_err(|e| AppError::msg(format!("PTY 请求失败: {e}")))?;
+        channel
+            .request_shell(true)
+            .await
+            .map_err(|e| AppError::msg(format!("shell 请求失败: {e}")))?;
+        channel
+    };
+
+    // 写入序列化
+    let mut writer = shell_channel.make_writer();
+    tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        while let Some(bytes) = write_rx.recv().await {
+            if writer.write_all(&bytes).await.is_err() {
+                break;
+            }
+        }
+        let _ = writer.shutdown().await;
+    });
+
+    emit_status(&app, new_sid, "connected", None);
+
+    // 数据泵：通道结束（自身关闭 / 父连接断开）后仅清理别名注册，不动共享转发
+    tokio::spawn(async move {
+        pump_channel(app.clone(), alias.clone(), shell_channel, resize_rx).await;
+        cleanup_session(&mgr, new_sid, &app, "会话已关闭");
+    });
+
+    Ok(new_sid)
+}
+
 /// 数据泵：通道 → 前端（ssh-data 事件，base64），并处理 resize 请求
 async fn pump_channel(
     app: AppHandle,
@@ -167,7 +245,10 @@ async fn pump_channel(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {
-                if session.closed.load(Ordering::Relaxed) { break }
+                // 自身关闭，或共享连接断开（父会话断开时别名一并掉线）
+                if session.closed.load(Ordering::Relaxed) || session.shared.closed.load(Ordering::Relaxed) {
+                    break
+                }
             }
             Some((cols, rows)) = resize_rx.recv() => {
                 let _ = channel.window_change(cols, rows, 0, 0).await;
@@ -201,18 +282,19 @@ async fn pump_channel(
     }
 }
 
-/// 清理会话（状态通知 + 停转发 + 移除注册）
+/// 清理会话（状态通知 + 停转发 + 移除注册）。
+/// 别名会话（复制 SSH 隧道）与父会话共享转发管理器：只摘除自身注册，
+/// 不停止共享的转发（父会话断开时统一停止）。
 pub fn cleanup_session(mgr: &Arc<SessionManager>, sid: u32, app: &AppHandle, message: &str) {
     if let Some(session) = mgr.remove(sid) {
         session.closed.store(true, Ordering::Relaxed);
         let handle = session.handle.clone();
         let forwards = session.forwards.clone();
+        let is_alias = session.is_alias;
         tauri::async_runtime::spawn(async move {
-            let mut guard = handle.lock().await;
-            if let Some(h) = guard.as_mut() {
-                let _ = h;
+            if !is_alias {
+                forwards.stop_all(&handle).await;
             }
-            forwards.stop_all(&handle).await;
         });
     }
     emit_status(app, sid, "disconnected", Some(message));

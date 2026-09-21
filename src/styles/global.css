@@ -74,6 +74,12 @@ textarea {
   user-select: text;
 }
 
+/* 屏蔽 WebView2/Edge 原生的密码显示按钮与清除按钮（样式不可控，由 FTextBox 自行实现） */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
 /* 表单布局 */
 .form-grid {
   display: grid;

@@ -221,6 +221,18 @@ pub fn delete(id: &str) -> AppResult<()> {
     save(&list)
 }
 
+/// 认证流程"记住密码"写入凭据管理器后，同步 hasStoredPassword 标记
+pub fn mark_stored_password(id: &str) -> AppResult<()> {
+    let mut list = load();
+    if let Some(p) = list.iter_mut().find(|p| p.id == id) {
+        if !p.has_stored_password {
+            p.has_stored_password = true;
+            save(&list)?;
+        }
+    }
+    Ok(())
+}
+
 /// 将连接目标解析为 [跳板..., 最终目标] 的 profile 链（跳板机可递归、防环）
 pub fn resolve_chain(profile: &Profile, depth: usize) -> AppResult<Vec<Profile>> {
     if depth > 4 {

@@ -2,20 +2,15 @@
 import { computed, ref } from 'vue'
 import { useSettingsStore, ACCENT_PRESETS, type TerminalColorScheme } from '../stores/settings'
 import { FButton, FComboBox, toast } from '../ui'
-import { appInfo } from '../api/backend'
-import { t, languageCode, systemLanguageCode, type LangPref } from '../i18n'
+import { t, type LangPref } from '../i18n'
 
 const settings = useSettingsStore()
-const info = ref('')
-
-appInfo().then((i) => (info.value = `${i.name} ${i.version} — ${i.mode}`))
 
 const nav = computed(() => [
   { id: 'appearance', label: t('settings.appearance'), icon: '★' },
   { id: 'terminal', label: t('settings.terminalNav'), icon: '>' },
   { id: 'connection', label: t('settings.connection'), icon: '⇄' },
   { id: 'update', label: t('settings.update'), icon: '↓' },
-  { id: 'about', label: t('settings.about'), icon: 'i' },
 ])
 const activeNav = ref('appearance')
 
@@ -103,13 +98,7 @@ const schemeModel = computed({
 
         <div class="sv-block">
           <div class="sv-row-label">{{ t('settings.language') }}</div>
-          <div class="sv-grid">
-            <span class="sv-label">{{ t('settings.language') }}</span>
-            <FComboBox v-model="langModel" :options="langLabelList" />
-          </div>
-          <div class="lang-code">
-            {{ settings.s.language === 'system' ? t('settings.currentLangSystem', { code: languageCode(), system: systemLanguageCode() }) : t('settings.currentLang', { code: languageCode() }) }}
-          </div>
+          <FComboBox v-model="langModel" :options="langLabelList" class="lang-combo" />
         </div>
 
         <div class="sv-block">
@@ -174,15 +163,6 @@ const schemeModel = computed({
         <div class="sv-block">
           <div class="sv-hint">{{ t('settings.updateHint') }}</div>
           <FButton @click="toast(t('settings.versionToast'))">{{ t('settings.checkUpdate') }}</FButton>
-        </div>
-      </template>
-
-      <template v-else>
-        <div class="sv-title">{{ t('settings.about') }}</div>
-        <div class="sv-block">
-          <div class="about-logo">&gt;_</div>
-          <div class="sv-hint">{{ info || 'HiShell' }}</div>
-          <div class="sv-hint">Tauri 2 + Rust + Vue 3 · russh · Win11 Fluent Design</div>
         </div>
       </template>
     </div>
@@ -264,11 +244,8 @@ const schemeModel = computed({
   line-height: 1.6;
   margin-bottom: 12px;
 }
-.lang-code {
-  margin: 10px 0 0 102px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  font-family: 'Cascadia Mono', Consolas, monospace;
+.lang-combo {
+  width: 260px;
 }
 .theme-cards {
   display: flex;
@@ -337,19 +314,5 @@ const schemeModel = computed({
 }
 .accent-dot.on {
   outline-color: var(--accent);
-}
-.about-logo {
-  width: 64px;
-  height: 64px;
-  border-radius: 14px;
-  background: var(--accent);
-  color: var(--accent-text-on);
-  font-family: 'Cascadia Mono', Consolas, monospace;
-  font-size: 22px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12px;
 }
 </style>
