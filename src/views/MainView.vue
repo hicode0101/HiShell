@@ -378,12 +378,13 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
     </div>
 
     <StatusBar />
-    <ConnectDialog />
     <PortForwardDialog />
     <PromptDialog />
     <ImportDialog v-model:open="importDialogOpen" />
     <SessionManagerDialog v-model:open="sessionManagerOpen" />
     <UserKeysDialog v-model:open="userKeysOpen" />
+    <!-- 连接对话框需位于会话管理器/用户密钥对话框之上（从列表编辑时叠加打开） -->
+    <ConnectDialog />
 
     <FDialog v-model:open="hotkeysOpen" :title="t('menus.hotkeys')" :width="480">
       <div class="hotkeys-list">

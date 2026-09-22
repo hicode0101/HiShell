@@ -46,8 +46,8 @@ function connect(p: SshProfile) {
 }
 
 function edit(p: SshProfile) {
+  // 保持会话管理器打开：连接对话框叠加在上层，保存/取消后回到列表并自动刷新
   sessions.openConnectDialog(p.id)
-  emit('update:open', false)
 }
 
 function remove(p: SshProfile) {
@@ -85,7 +85,7 @@ async function confirmRemove() {
       </div>
     </div>
     <template #footer>
-      <FButton @click="sessions.openConnectDialog(); emit('update:open', false)">
+      <FButton @click="sessions.openConnectDialog()">
         {{ t('common.newConnection') }}
       </FButton>
       <div class="sm-spacer" />

@@ -347,6 +347,14 @@ export default {
   },
 
   ports: {
+    stateRunning: 'Running',
+    stateSavedOnly: 'Saved (starts on connect)',
+    stateOff: 'Not active',
+    stateStarting: 'Starting…',
+    stateError: 'Start failed',
+    tabLocal: 'Local (Outbound)',
+    tabRemote: 'Remote (Incoming)',
+    tabDynamic: 'Dynamic (SOCKS5)',
     title: 'Ports',
     dialogTitle: 'Port Forwarding',
     forwardedPorts: 'Forwarded ports',
@@ -359,7 +367,7 @@ export default {
     targetHostPlaceholder: '127.0.0.1',
     targetPortPlaceholder: '80',
     description: 'Description',
-    descriptionDynamic: 'SOCKS proxy',
+    descriptionDynamic: 'Description',
     forwardPort: 'Forward port',
     delete: 'Delete rule',
     socksProxy: 'SOCKS proxy',

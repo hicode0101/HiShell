@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -12,12 +12,18 @@ const props = withDefaults(
 
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
+const overlayEl = ref<HTMLElement>()
+
 function close() {
   emit('update:open', false)
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.open) close()
+  // 多层对话框叠开时，Esc 只关闭最上层（DOM 中最后一个打开的遮罩）
+  if (e.key === 'Escape' && props.open) {
+    const overlays = document.querySelectorAll('.f-dialog-overlay')
+    if (!overlays.length || overlays[overlays.length - 1] === overlayEl.value) close()
+  }
 }
 watch(
   () => props.open,
@@ -32,7 +38,7 @@ watch(
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="f-dialog-overlay">
+    <div v-if="open" ref="overlayEl" class="f-dialog-overlay">
       <div class="f-dialog" :style="{ width: width + 'px' }" role="dialog" aria-modal="true">
         <div class="f-dialog-title">{{ title }}</div>
         <div class="f-dialog-body">

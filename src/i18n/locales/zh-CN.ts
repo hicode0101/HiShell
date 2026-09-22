@@ -349,6 +349,14 @@ export default {
   },
 
   ports: {
+    stateRunning: '运行中',
+    stateSavedOnly: '已保存（连接后启用）',
+    stateOff: '未生效',
+    stateStarting: '启动中…',
+    stateError: '启动失败',
+    tabLocal: '本地（拨出）',
+    tabRemote: '远程（传入）',
+    tabDynamic: '动态（SOCKS5）',
     title: '端口',
     dialogTitle: '端口转发',
     forwardedPorts: '已配置的端口转发',
@@ -361,7 +369,7 @@ export default {
     targetHostPlaceholder: '127.0.0.1',
     targetPortPlaceholder: '80',
     description: '描述',
-    descriptionDynamic: 'SOCKS 代理',
+    descriptionDynamic: '描述',
     forwardPort: '转发端口',
     delete: '删除规则',
     socksProxy: 'SOCKS 代理',

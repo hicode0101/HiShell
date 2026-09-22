@@ -246,7 +246,12 @@ async fn pump_channel(
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {
                 // 自身关闭，或共享连接断开（父会话断开时别名一并掉线）
-                if session.closed.load(Ordering::Relaxed) || session.shared.closed.load(Ordering::Relaxed) {
+                if session.closed.load(Ordering::Relaxed) {
+                    crate::logger::log(&format!("sid={sid} 诊断：session.closed 被置位"));
+                    break
+                }
+                if session.shared.closed.load(Ordering::Relaxed) {
+                    crate::logger::log(&format!("sid={sid} 诊断：shared.closed 被置位"));
                     break
                 }
             }
@@ -271,8 +276,16 @@ async fn pump_channel(
                             "data": base64::engine::general_purpose::STANDARD.encode(data),
                         }));
                     }
-                    Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => {
-                        crate::logger::log(&format!("sid={sid} 通道结束（共 {data_count} 块数据）"));
+                    Some(ChannelMsg::Eof) => {
+                        crate::logger::log(&format!("sid={sid} 诊断：服务器发来通道 EOF（共 {data_count} 块数据）"));
+                        break
+                    }
+                    Some(ChannelMsg::Close) => {
+                        crate::logger::log(&format!("sid={sid} 诊断：服务器发来通道 Close（共 {data_count} 块数据）"));
+                        break
+                    }
+                    None => {
+                        crate::logger::log(&format!("sid={sid} 诊断：通道 wait() 返回 None（共 {data_count} 块数据）"));
                         break
                     }
                     _ => {}

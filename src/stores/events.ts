@@ -12,7 +12,9 @@ import {
   b64ToBytes,
 } from '../api/backend'
 import { useSessionsStore } from './sessions'
+import { useProfilesStore } from './profiles'
 import { useTransfersStore } from './transfers'
+import { forwardAdd } from '../api/backend'
 import { t } from '../i18n'
 
 type DataHandler = (bytes: Uint8Array) => void
@@ -71,6 +73,16 @@ export function initGlobalEvents() {
 
   listenEvent<SshStatusEvent>('ssh-status', (e) => {
     sessions.setStatusBySid(e.sid, e.status, e.message)
+    // 会话连上后补投「连接期间保存」的端口转发规则：
+    // 后端在 shell 就绪时会自动应用配置里的规则，但连接过程中保存的规则会错过那一波，
+    // 这里按规则 id 幂等补投（后端对运行中的规则自动跳过），确保所有已保存规则都生效。
+    if (e.status === 'connected') {
+      const tab = sessions.tabs.find((t) => t.sid === e.sid)
+      const profile = tab?.profileId ? useProfilesStore().byId(tab.profileId) : undefined
+      profile?.forwardedPorts.forEach((rule) => {
+        forwardAdd(e.sid, rule).catch(() => {})
+      })
+    }
   })
 
   listenEvent<SshDataEvent>('ssh-data', (e) => {

@@ -6,10 +6,10 @@
  * - 规则保存到当前会话的 Profile（M3 接入 russh 真实转发）
  */
 import { computed, reactive, ref, watch } from 'vue'
-import { FButton, FTextBox, FDialog, toast } from '../../ui'
+import { FButton, FComboBox, FTextBox, FDialog, toast } from '../../ui'
 import { useSessionsStore } from '../../stores/sessions'
 import { useProfilesStore } from '../../stores/profiles'
-import { forwardAdd, forwardRemove } from '../../api/backend'
+import { forwardAdd, forwardRemove, forwardList } from '../../api/backend'
 import { t } from '../../i18n'
 import type { ForwardRule } from '../../api/types'
 
@@ -39,8 +39,39 @@ const descriptionPlaceholder = computed(() =>
   newType.value === 'dynamic' ? t('ports.descriptionDynamic') : t('ports.description'),
 )
 
+/* 动态转发的代理协议（当前仅 SOCKS5，预留给 SOCKS4 / HTTP） */
+const socksType = ref('SOCKS5')
+const socksTypeOptions = ['SOCKS5']
+
+/* 运行状态：active/error 来自后端实时转发管理器（仅会话在线时有值） */
+const liveStatus = ref<Record<string, { active: boolean; error: string | null }>>({})
+let pollTimer = 0
+
+async function refreshLive() {
+  const sid = tab.value?.sid
+  if (sid === undefined || tab.value?.status !== 'connected') {
+    liveStatus.value = {}
+    return
+  }
+  try {
+    const list = await forwardList(sid)
+    const map: Record<string, { active: boolean; error: string | null }> = {}
+    list.forEach((r) => (map[r.id] = { active: r.active, error: r.error ?? null }))
+    liveStatus.value = map
+  } catch {
+    liveStatus.value = {}
+  }
+}
+
 watch(open, (v) => {
-  if (v) resetForm()
+  resetForm()
+  if (v) {
+    void refreshLive()
+    pollTimer = window.setInterval(() => void refreshLive(), 2000)
+  } else if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = 0
+  }
 })
 
 function resetForm() {
@@ -95,6 +126,7 @@ async function addRule() {
   profile.value.forwardedPorts.push(rule)
   await profiles.upsert(JSON.parse(JSON.stringify(profile.value)))
   toast(live ? t('ports.toastAdded') : t('ports.toastAddedSavedOnly'), 'success')
+  void refreshLive()
   resetForm()
 }
 
@@ -115,6 +147,7 @@ async function removeRule(id: string) {
     }
   }
   await profiles.upsert(JSON.parse(JSON.stringify(profile.value)))
+  void refreshLive()
   toast(t('ports.toastDeleted'))
 }
 </script>
@@ -127,6 +160,13 @@ async function removeRule(id: string) {
       <div v-for="r in rules" :key="r.id" class="pf-row">
         <span class="pf-type" :class="r.type">{{ r.type === 'local' ? t('ports.local') : r.type === 'remote' ? t('ports.remote') : t('ports.dynamic') }}</span>
         <span class="pf-summary mono">{{ ruleSummary(r) }}</span>
+        <span v-if="liveStatus[r.id]?.error" class="pf-state err" :title="liveStatus[r.id].error ?? ''">
+          {{ t('ports.stateError') }}: {{ liveStatus[r.id].error }}
+        </span>
+        <span v-else-if="liveStatus[r.id]?.active" class="pf-state ok">● {{ t('ports.stateRunning') }}</span>
+        <span v-else-if="liveStatus[r.id]" class="pf-state off">{{ t('ports.stateOff') }}</span>
+        <span v-else-if="tab?.status === 'connected'" class="pf-state off">{{ t('ports.stateStarting') }}</span>
+        <span v-else class="pf-state off">{{ t('ports.stateSavedOnly') }}</span>
         <button class="pf-del" :title="t('ports.delete')" @click="removeRule(r.id)">
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
             <path d="M4.5 5.5h11M8 5.5V4.3c0-.44.36-.8.8-.8h2.4c.44 0 .8.36.8.8v1.2M6 5.5l.7 9.8c.04.66.6 1.2 1.27 1.2h4.06c.66 0 1.23-.54 1.27-1.2l.7-9.8M8.4 8.5v5M11.6 8.5v5" />
@@ -153,7 +193,7 @@ async function removeRule(id: string) {
         <FTextBox v-model="form.targetPort" :placeholder="t('ports.targetPortPlaceholder')" class="pf-port" />
       </template>
       <template v-else>
-        <span class="pf-dynamic-hint">{{ t('ports.dynamicHint') }}</span>
+        <FComboBox v-model="socksType" :options="socksTypeOptions" class="pf-socks" />
       </template>
     </div>
     <div class="pf-desc">
@@ -162,9 +202,9 @@ async function removeRule(id: string) {
 
     <div class="pf-bottom">
       <div class="pf-types">
-        <button class="pf-type-btn" :class="{ on: newType === 'local' }" @click="newType = 'local'">{{ t('ports.local') }}</button>
-        <button class="pf-type-btn" :class="{ on: newType === 'remote' }" @click="newType = 'remote'">{{ t('ports.remote') }}</button>
-        <button class="pf-type-btn" :class="{ on: newType === 'dynamic' }" @click="newType = 'dynamic'">{{ t('ports.dynamic') }}</button>
+        <button class="pf-type-btn" :class="{ on: newType === 'local' }" @click="newType = 'local'">{{ t('ports.tabLocal') }}</button>
+        <button class="pf-type-btn" :class="{ on: newType === 'remote' }" @click="newType = 'remote'">{{ t('ports.tabRemote') }}</button>
+        <button class="pf-type-btn" :class="{ on: newType === 'dynamic' }" @click="newType = 'dynamic'">{{ t('ports.tabDynamic') }}</button>
       </div>
       <div class="pf-spacer" />
       <FButton variant="accent" icon="check" @click="addRule">{{ t('ports.forwardPort') }}</FButton>
@@ -224,6 +264,23 @@ async function removeRule(id: string) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.pf-state {
+  flex: none;
+  font-size: 11.5px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-state.ok {
+  color: var(--success);
+}
+.pf-state.off {
+  color: var(--text-tertiary);
+}
+.pf-state.err {
+  color: var(--danger);
+}
 .pf-del {
   border: none;
   background: transparent;
@@ -269,11 +326,9 @@ async function removeRule(id: string) {
   flex: none;
   display: inline-flex;
 }
-.pf-dynamic-hint {
+.pf-socks {
   flex: 1;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  line-height: 1.4;
+  min-width: 0;
 }
 .pf-desc {
   margin-top: 10px;
