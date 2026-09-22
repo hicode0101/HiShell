@@ -25,9 +25,10 @@ const menus = computed<MenuDef[]>(() => [
   {
     label: t('menus.file'),
     children: [
-      { label: t('menus.newConnection'), command: 'new-connection', shortcut: 'Alt+N' },
-      { label: t('menus.newSftp'), command: 'new-sftp', shortcut: 'Alt+S' },
       { label: t('menus.newLocalTerminal'), command: 'new-local', shortcut: 'Alt+L' },
+      { label: t('menus.newConnection'), command: 'new-connection', shortcut: 'Alt+N' },
+      { label: t('menus.newSerial'), command: 'new-serial' },
+      { label: t('menus.newTelnet'), command: 'new-telnet' },
       { separator: true },
       { label: t('menus.importSessions'), command: 'import-sessions' },
       { label: t('menus.openConfigDir'), command: 'open-config-dir' },
@@ -119,7 +120,7 @@ if (typeof document !== 'undefined') document.addEventListener('mousedown', onDo
             v-else
             class="menu-item"
             :class="{ disabled: item.disabled, danger: item.command === 'exit' }"
-            @click="!item.disabled && run(item.command ?? '')"
+            @click.stop="!item.disabled && run(item.command ?? '')"
           >
             <span class="menu-check">{{ item.checked ? '✓' : '' }}</span>
             <span class="menu-item-label">{{ item.label }}</span>

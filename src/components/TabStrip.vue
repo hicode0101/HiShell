@@ -89,7 +89,8 @@ function duplicateTab(tab: SessionTab) {
 function onStripContext(e: MouseEvent) {
   showContextMenu(e, [
     { label: t('common.newConnection'), icon: 'plus', onClick: () => emit('new-connection') },
-    { label: t('common.newSftp'), icon: 'folder', onClick: () => emit('new-sftp') },
+    // 「新建 SFTP」暂时隐藏（功能后续版本恢复）
+    // { label: t('common.newSftp'), icon: 'folder', onClick: () => emit('new-sftp') },
   ])
 }
 

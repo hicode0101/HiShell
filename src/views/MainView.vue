@@ -292,9 +292,6 @@ function onKeydown(e: KeyboardEvent) {
   } else if (e.altKey && e.key.toLowerCase() === 'n') {
     e.preventDefault()
     command('new-connection')
-  } else if (e.altKey && e.key.toLowerCase() === 's') {
-    e.preventDefault()
-    command('new-sftp')
   } else if (e.altKey && e.key.toLowerCase() === 'l') {
     e.preventDefault()
     command('new-local')
@@ -329,7 +326,6 @@ const activeTab = computed(() => sessions.activeTab)
 /** 快捷键一览（与实际实现一致） */
 const hotkeyRows = computed(() => [
   { action: t('menus.newConnection'), keys: 'Ctrl+N / Alt+N' },
-  { action: t('menus.newSftp'), keys: 'Alt+S' },
   { action: t('menus.fileView'), keys: 'Ctrl+Shift+F' },
   { action: t('menus.newLocalTerminal'), keys: 'Alt+L' },
   { action: t('menus.tabNext'), keys: 'Ctrl+Tab' },
