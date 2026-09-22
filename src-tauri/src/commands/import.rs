@@ -64,6 +64,7 @@ fn to_profile(c: &ImportCandidate) -> Profile {
         connect_timeout: 10000,
         term: "xterm-256color".into(),
         forwarded_ports: vec![],
+        user_key_name: String::new(),
         behavior_on_session_end: "keep".into(),
     }
 }

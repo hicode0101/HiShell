@@ -103,6 +103,21 @@ pub async fn ssh_test(
 
     let timeout_ms = profile.connect_timeout.max(1000);
 
+    // userKey：按名称引用用户密钥管理中的密钥，解析为 ~/.ssh/<name> 的公钥认证
+    let mut profile = profile;
+    if profile.auth == "userKey" {
+        profile.auth = "publicKey".into();
+        if profile.private_key_path.trim().is_empty() {
+            if let Some(home) = dirs::home_dir() {
+                profile.private_key_path = home
+                    .join(".ssh")
+                    .join(&profile.user_key_name)
+                    .to_string_lossy()
+                    .to_string();
+            }
+        }
+    }
+
     // 传输链（SOCKS5 / HTTP CONNECT / ProxyCommand / 直连）
     let transport = crate::ssh::transport::connect_transport(&profile, None)
         .await

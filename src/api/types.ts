@@ -25,7 +25,7 @@ export type SpecialDirKind =
 
 /* ---------- 连接配置 ---------- */
 
-export type AuthKind = 'password' | 'publicKey' | 'keyboardInteractive' | 'agent' | 'auto'
+export type AuthKind = 'password' | 'publicKey' | 'userKey' | 'keyboardInteractive' | 'agent' | 'auto'
 
 export type ProxyConfig =
   | { kind: 'none' }
@@ -47,6 +47,8 @@ export interface SshProfile {
   hasStoredPassphrase?: boolean
   privateKeyPath: string
   privateKeyPassphrase: string
+  /** 用户密钥管理中的密钥名（auth = 'userKey' 时生效） */
+  userKeyName: string
   proxy: ProxyConfig
   keepaliveInterval: number
   keepaliveCountMax: number
@@ -77,6 +79,7 @@ export function defaultProfile(partial: Partial<SshProfile> = {}): SshProfile {
     password: '',
     privateKeyPath: '',
     privateKeyPassphrase: '',
+    userKeyName: '',
     proxy: { kind: 'none' },
     keepaliveInterval: 5000,
     keepaliveCountMax: 10,

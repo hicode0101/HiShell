@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
  * 会话管理器：列出全部连接配置，支持 连接 / 编辑 / 删除 / 新建。
- * 删除采用两段确认（再点一次生效），避免误删。
+ * 删除通过确认对话框二次确认，避免误删。
  */
 import { computed, ref } from 'vue'
-import { FButton, FDialog, toast } from '../ui'
+import { FButton, FConfirmDialog, FDialog, toast } from '../ui'
 import { useProfilesStore } from '../stores/profiles'
 import { useSessionsStore } from '../stores/sessions'
 import type { SshProfile } from '../api/types'
@@ -15,7 +15,7 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 
 const profiles = useProfilesStore()
 const sessions = useSessionsStore()
-const confirmingId = ref('')
+const deleteTarget = ref<SshProfile | null>(null)
 
 const rows = computed(() =>
   profiles.profiles.map((p) => ({
@@ -50,14 +50,16 @@ function edit(p: SshProfile) {
   emit('update:open', false)
 }
 
-async function remove(p: SshProfile) {
-  if (confirmingId.value !== p.id) {
-    confirmingId.value = p.id
-    return
-  }
-  confirmingId.value = ''
+function remove(p: SshProfile) {
+  deleteTarget.value = p
+}
+
+async function confirmRemove() {
+  const p = deleteTarget.value
+  if (!p) return
   await profiles.remove(p.id)
   toast(t('sessions.deletedToast', { name: p.name }), 'success')
+  deleteTarget.value = null
 }
 </script>
 
@@ -77,7 +79,7 @@ async function remove(p: SshProfile) {
           <FButton variant="accent" @click="connect(row.profile)">{{ t('common.connect') }}</FButton>
           <FButton variant="subtle" @click="edit(row.profile)">{{ t('common.edit') }}</FButton>
           <FButton variant="danger" @click="remove(row.profile)">
-            {{ confirmingId === row.profile.id ? t('sessions.confirmDelete') : t('common.delete') }}
+            {{ t('common.delete') }}
           </FButton>
         </div>
       </div>
@@ -90,6 +92,15 @@ async function remove(p: SshProfile) {
       <FButton variant="subtle" @click="emit('update:open', false)">{{ t('common.close') }}</FButton>
     </template>
   </FDialog>
+
+  <!-- 删除连接确认对话框 -->
+  <FConfirmDialog
+    :open="!!deleteTarget"
+    :title="t('common.delete')"
+    :message="t('sessions.confirmDelete', { name: deleteTarget?.name ?? '' })"
+    @update:open="(v: boolean) => !v && (deleteTarget = null)"
+    @confirm="confirmRemove"
+  />
 </template>
 
 <style scoped>

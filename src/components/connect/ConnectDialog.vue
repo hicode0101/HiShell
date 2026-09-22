@@ -5,7 +5,7 @@ import { useProfilesStore } from '../../stores/profiles'
 import { useSessionsStore } from '../../stores/sessions'
 import { defaultProfile, type AuthKind, type ProxyConfig, type SshProfile } from '../../api/types'
 import { isTauri } from '../../api/adapter'
-import { sshTest } from '../../api/backend'
+import { sshTest, userKeyList } from '../../api/backend'
 import { t } from '../../i18n'
 
 const sessions = useSessionsStore()
@@ -41,9 +41,31 @@ watch(open, (v) => {
 const authOptions = computed(() => [
   { kind: 'password' as AuthKind, label: t('connect.auth.password') },
   { kind: 'publicKey' as AuthKind, label: t('connect.auth.privateKey') },
+  { kind: 'userKey' as AuthKind, label: t('connect.auth.userKey') },
   { kind: 'keyboardInteractive' as AuthKind, label: t('connect.auth.ki') },
   { kind: 'agent' as AuthKind, label: t('connect.auth.agent') },
 ])
+
+/* 用户密钥列表（auth = userKey 时供选择） */
+const userKeyNames = ref<string[]>([])
+async function loadUserKeys() {
+  if (!isTauri) {
+    userKeyNames.value = []
+    return
+  }
+  try {
+    userKeyNames.value = (await userKeyList()).map((k) => k.name)
+  } catch {
+    userKeyNames.value = []
+  }
+  // 未选定时自动选第一个可用密钥
+  if (userKeyNames.value.length && !userKeyNames.value.includes(form.userKeyName)) {
+    form.userKeyName = userKeyNames.value[0]!
+  }
+}
+watch([open, authKind], ([o, k]) => {
+  if (o && k === 'userKey') void loadUserKeys()
+})
 const authLabel = computed({
   get: () => authOptions.value.find((o) => o.kind === authKind.value)?.label ?? '',
   set: (label: string) => {
@@ -140,6 +162,10 @@ async function testConnection() {
     toast(t('connect.hostRequired'), 'error')
     return
   }
+  if (authKind.value === 'userKey' && !form.userKeyName) {
+    toast(t('connect.userKeyRequired'), 'error')
+    return
+  }
   if (!isTauri) {
     toast(t('connect.testOk'))
     return
@@ -175,6 +201,10 @@ async function saveProfile() {
     toast(t('connect.hostRequired'), 'error')
     return
   }
+  if (authKind.value === 'userKey' && !form.userKeyName) {
+    toast(t('connect.userKeyRequired'), 'error')
+    return
+  }
   if (!form.name) form.name = form.host
   await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
   toast(t('connect.savedToast', { name: form.name }), 'success')
@@ -186,6 +216,10 @@ async function connectNow() {
   form.proxy = buildProxy()
   if (!form.host) {
     toast(t('connect.hostRequired'), 'error')
+    return
+  }
+  if (authKind.value === 'userKey' && !form.userKeyName) {
+    toast(t('connect.userKeyRequired'), 'error')
     return
   }
   if (!form.name) form.name = form.host
@@ -228,6 +262,13 @@ async function connectNow() {
           <FTextBox v-model="form.privateKeyPath" :placeholder="t('connect.privateKeyPlaceholder')" />
           <FButton @click="pickPrivateKey">{{ t('common.browse') }}</FButton>
         </div>
+        <span class="cd-label">{{ t('connect.passphrase') }}</span>
+        <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" />
+      </template>
+      <template v-else-if="authKind === 'userKey'">
+        <span class="cd-label">{{ t('connect.userKeyLabel') }}</span>
+        <FComboBox v-if="userKeyNames.length" v-model="form.userKeyName" :options="userKeyNames" />
+        <span v-else class="cd-hint">{{ t('connect.noUserKeys') }}</span>
         <span class="cd-label">{{ t('connect.passphrase') }}</span>
         <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" />
       </template>

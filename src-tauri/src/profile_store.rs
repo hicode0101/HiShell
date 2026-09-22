@@ -71,6 +71,9 @@ pub struct Profile {
     pub private_key_passphrase: String,
     #[serde(default, rename = "hasStoredPassphrase")]
     pub has_stored_passphrase: bool,
+    /// 用户密钥管理中的密钥名（auth = userKey 时连接时解析为 ~/.ssh/<name>）
+    #[serde(default, rename = "userKeyName")]
+    pub user_key_name: String,
     pub proxy: ProxyConfig,
     #[serde(rename = "keepaliveInterval")]
     pub keepalive_interval: u64,
@@ -117,6 +120,7 @@ fn base_profile() -> Profile {
         private_key_path: String::new(),
         private_key_passphrase: String::new(),
         has_stored_passphrase: false,
+        user_key_name: String::new(),
         proxy: ProxyConfig::None,
         keepalive_interval: 5000,
         keepalive_count_max: 10,

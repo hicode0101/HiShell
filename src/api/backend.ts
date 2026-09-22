@@ -409,6 +409,50 @@ export async function userKeySavePublic(name: string, content: string): Promise<
   return tauriInvoke<string>('user_key_save_public', { name, content })
 }
 
+/* ==================== 密钥导入 / 导出 ==================== */
+
+export interface KeyInspect {
+  encrypted: boolean
+  keyType?: string | null
+  bits?: number | null
+  comment?: string
+}
+
+/** 导入前探测私钥文件：是否加密、类型、位数 */
+export async function userKeyInspect(sourcePath: string): Promise<KeyInspect> {
+  return tauriInvoke<KeyInspect>('user_key_inspect', { sourcePath })
+}
+
+/** 导入私钥到 ~/.ssh（口令用于解密源文件，也用于加密落盘副本） */
+export async function userKeyImport(req: {
+  sourcePath: string
+  name: string
+  passphrase: string
+}): Promise<UserKeyInfo> {
+  return tauriInvoke<UserKeyInfo>('user_key_import', { req })
+}
+
+/** 读取公钥文件内容（OpenSSH 单行） */
+export async function userKeyPublicContent(publicPath: string): Promise<string> {
+  return tauriInvoke<string>('user_key_public_content', { publicPath })
+}
+
+/** 导出私钥到指定路径（校验当前口令，format: openssh/pem/ppk） */
+export async function userKeyExportPrivateTo(req: {
+  privatePath: string
+  currentPassphrase: string
+  newPassphrase: string
+  format: 'openssh' | 'pem' | 'ppk'
+  destPath: string
+}): Promise<void> {
+  return tauriInvoke<void>('user_key_export_private_to', { req })
+}
+
+/** 把文本写到指定路径（公钥导出用） */
+export async function userKeyWriteText(path: string, content: string): Promise<void> {
+  return tauriInvoke<void>('user_key_write_text', { path, content })
+}
+
 /* ==================== 本地终端（PTY） ==================== */
 
 export async function localStart(): Promise<number> {

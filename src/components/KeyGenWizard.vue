@@ -13,6 +13,7 @@ import {
   userKeyGenerateStart,
   userKeySavePublic,
 } from '../api/backend'
+import { toRfc4716 } from '../utils/pubkeyFormat'
 import { t } from '../i18n'
 
 const props = defineProps<{ open: boolean }>()
@@ -139,17 +140,7 @@ function fillKeyInfoDefaults() {
   pass2.value = ''
 }
 
-/** OpenSSH 单行公钥 → RFC4716 (IETF SECSH) 多行格式 */
-function toRfc4716(blob: string, comment: string): string {
-  const b64 = blob.split(/\s+/)[1] ?? ''
-  const lines = b64.match(/.{1,72}/g) ?? []
-  let out = '---- BEGIN SSH2 PUBLIC KEY ----\n'
-  if (comment) out += `Comment: "${comment}"\n`
-  out += lines.join('\n') + '\n'
-  out += '---- END SSH2 PUBLIC KEY ----\n'
-  return out
-}
-
+/** OpenSSH 单行公钥 → RFC4716 转换已抽取到 utils/pubkeyFormat（此处直接使用） */
 const pubText = computed(() => {
   if (!publicBlob.value) return ''
   const comment = keyComment.value.trim()

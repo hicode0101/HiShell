@@ -281,6 +281,20 @@ async fn authenticate(
     profile: &Profile,
     secrets_bundle: &secrets::ProfileSecrets,
 ) -> AppResult<()> {
+    // userKey：按名称引用用户密钥管理中的密钥，解析为 ~/.ssh/<name> 的公钥认证
+    let mut profile = profile.clone();
+    if profile.auth == "userKey" {
+        profile.auth = "publicKey".into();
+        if profile.private_key_path.trim().is_empty() {
+            if let Some(home) = dirs::home_dir() {
+                profile.private_key_path = home
+                    .join(".ssh")
+                    .join(&profile.user_key_name)
+                    .to_string_lossy()
+                    .to_string();
+            }
+        }
+    }
     let mut order: Vec<&str> = Vec::new();
     match profile.auth.as_str() {
         "agent" => order.extend(["agent", "publicKey", "password", "keyboardInteractive"]),
@@ -299,7 +313,7 @@ async fn authenticate(
         }
         let result: AppResult<bool> = match method {
             "agent" => auth_agent(handle, shared).await,
-            "publicKey" => auth_publickey(handle, shared, profile, secrets_bundle).await,
+            "publicKey" => auth_publickey(handle, shared, &profile, secrets_bundle).await,
             "password" => auth_password(handle, shared, secrets_bundle).await,
             "keyboardInteractive" => auth_ki(handle, shared, secrets_bundle).await,
             _ => Ok(false),
