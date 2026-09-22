@@ -238,6 +238,7 @@ export default {
   },
 
   sftp: {
+    showHidden: '显示隐藏文件',
     local: '本地',
     remote: '远程',
     binary: '二进制',

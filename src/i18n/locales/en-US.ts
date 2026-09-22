@@ -236,6 +236,7 @@ export default {
   },
 
   sftp: {
+    showHidden: 'Show hidden files',
     local: 'Local',
     remote: 'Remote',
     binary: 'Binary',

@@ -213,6 +213,15 @@ const quickLinks = [
   { labelKey: 'sftp.quick.home', kind: 'home', icon: 'server' },
 ] as const
 
+/* ---------- 隐藏文件显示（仅远程面板） ---------- */
+
+const showHidden = ref(false)
+
+function toggleShowHidden() {
+  showHidden.value = !showHidden.value
+  reload()
+}
+
 /* ---------- 加载 ---------- */
 
 async function load(p: string, pushBack = true) {
@@ -223,7 +232,16 @@ async function load(p: string, pushBack = true) {
       props.side === 'local'
         ? await listLocalDir(p)
         : await listRemoteDir(props.session?.sid, p, props.session?.status === 'connected')
-    entries.value = list
+    // 远程面板：未勾选「显示隐藏」时过滤 dot 开头的隐藏项；
+    // 非根目录时在最前插入 '..'（双击返回上一级）
+    let shown =
+      props.side === 'remote' && !showHidden.value
+        ? list.filter((x) => x.name === '..' || !x.name.startsWith('.'))
+        : list
+    if (props.side === 'remote' && p !== '/' && p !== '') {
+      shown = [{ name: '..', kind: 'dir', size: 0, mtime: 0 }, ...shown]
+    }
+    entries.value = shown
     loadError.value = ''
     if (pushBack && p !== path.value) {
       backStack.value.push(path.value)
@@ -421,12 +439,22 @@ function rowContextMenu(e: MouseEvent, entry: DirEntry) {
       disabled: isDotDot,
       onClick: () => openDelete(entry),
     },
-    ...(props.side === 'remote' && !isDotDot
+    ...(props.side === 'remote'
       ? [
+          ...(!isDotDot
+            ? [
+                {
+                  label: t('sftp.chmod'),
+                  icon: 'lock',
+                  onClick: () => openChmod(entry),
+                },
+              ]
+            : []),
           {
-            label: t('sftp.chmod'),
-            icon: 'lock',
-            onClick: () => openChmod(entry),
+            label: t('sftp.showHidden'),
+            icon: showHidden.value ? 'eye' : 'eye-off',
+            checked: showHidden.value,
+            onClick: toggleShowHidden,
           },
         ]
       : []),
@@ -442,6 +470,17 @@ function rowContextMenu(e: MouseEvent, entry: DirEntry) {
 function paneContextMenu(e: MouseEvent) {
   showContextMenu(e, [
     { label: t('common.refresh'), icon: 'refresh', onClick: reload },
+    ...(props.side === 'remote'
+      ? [
+          {
+            label: t('sftp.showHidden'),
+            icon: showHidden.value ? 'eye' : 'eye-off',
+            checked: showHidden.value,
+            onClick: toggleShowHidden,
+          },
+          { separator: true },
+        ]
+      : []),
     {
       label: t('sftp.newFolder'),
       icon: 'folder',
