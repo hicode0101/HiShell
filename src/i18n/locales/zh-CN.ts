@@ -32,7 +32,16 @@ export default {
     terminal: '终端',
     files: '文件',
     refresh: '刷新',
+  },  validate: {
+    hostInvalid: '主机无效：应为合法的 IPv4 / IPv6 或域名',
+    portInvalid: '端口无效：应为 1–65535 的整数',
+    keepaliveInvalid: 'Keepalive 无效：应为 1000–3600000 的整数（毫秒）',
+    timeoutInvalid: '连接超时无效：应为 1000–600000 的整数（毫秒）',
+    proxyHostInvalid: '代理服务器无效：应为合法的 IP 或域名',
+    proxyPortInvalid: '代理端口无效：应为 1–65535 的整数',
+    proxyCmdRequired: 'Proxy Command 不能为空',
   },
+
   quickconnect: {
     title: '快速连接',
     note: '快速连接不会保存到会话管理器；如需保存请使用「新建连接」。',
@@ -378,7 +387,7 @@ export default {
     remote: '远程',
     dynamic: '动态',
     hostPlaceholder: '127.0.0.1',
-    portPlaceholder: '8000',
+    portPlaceholder: '1–65535',
     targetHostPlaceholder: '127.0.0.1',
     targetPortPlaceholder: '80',
     description: '描述',

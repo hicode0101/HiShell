@@ -5,6 +5,7 @@ import { useProfilesStore } from '../../stores/profiles'
 import { useSessionsStore } from '../../stores/sessions'
 import { defaultProfile, type AuthKind, type ProxyConfig, type SshProfile } from '../../api/types'
 import { isTauri } from '../../api/adapter'
+import { isValidHost, isValidInt, isValidPort } from '../../utils/validate'
 import { sshTest, userKeyList } from '../../api/backend'
 import { t } from '../../i18n'
 
@@ -24,6 +25,43 @@ const http = reactive({ host: '127.0.0.1', port: 8080, username: '', password: '
 const proxyCmd = reactive({ command: '' })
 const jumpProfileId = ref('')
 const testing = ref(false)
+const showErr = ref(false)
+
+/** 实时校验：返回 { 字段: 错误文案 }（仅统计当前选择的代理类型相关字段） */
+const errs = computed(() => {
+  const e: Record<string, string> = {}
+  if (!form.host.trim()) e.host = t('validate.hostRequired')
+  else if (!isValidHost(form.host)) e.host = t('validate.hostInvalid')
+  if (!isValidPort(form.port)) e.port = t('validate.portInvalid')
+  if (!isValidInt(form.keepaliveInterval, 1000, 3600000)) e.keepalive = t('validate.keepaliveInvalid')
+  if (!isValidInt(form.connectTimeout, 1000, 600000)) e.timeout = t('validate.timeoutInvalid')
+  if (proxyKind.value === 'socks5' || proxyKind.value === 'http') {
+    const hs = proxyKind.value === 'socks5' ? socks.host : http.host
+    const pt = proxyKind.value === 'socks5' ? socks.port : http.port
+    if (!isValidHost(hs)) e.proxyHost = t('validate.proxyHostInvalid')
+    if (!isValidPort(pt)) e.proxyPort = t('validate.proxyPortInvalid')
+  }
+  if (proxyKind.value === 'proxyCommand' && !proxyCmd.command.trim()) {
+    e.proxyCmd = t('validate.proxyCmdRequired')
+  }
+  return e
+})
+
+function validateForm(): boolean {
+  showErr.value = true
+  if (Object.keys(errs.value).length) {
+    toast(Object.values(errs.value)[0]!, 'error')
+    return false
+  }
+  return true
+}
+
+/** 校验通过后把数字字段统一转为数值（后端 serde 要求） */
+function coerceNumbers() {
+  form.port = Number(form.port)
+  form.keepaliveInterval = Number(form.keepaliveInterval)
+  form.connectTimeout = Number(form.connectTimeout)
+}
 
 watch(open, (v) => {
   if (!v) return
@@ -35,6 +73,7 @@ watch(open, (v) => {
     Object.assign(form, defaultProfile())
   }
   fillFormForEdit()
+  showErr.value = false
 })
 
 /* 认证：稳定值 + 本地化标签 */
@@ -170,6 +209,8 @@ async function testConnection() {
     toast(t('connect.testOk'))
     return
   }
+  if (!validateForm()) return
+  coerceNumbers()
   testing.value = true
   try {
     form.auth = authKind.value
@@ -197,14 +238,12 @@ function secretsFromForm() {
 async function saveProfile() {
   form.auth = authKind.value
   form.proxy = buildProxy()
-  if (!form.host) {
-    toast(t('connect.hostRequired'), 'error')
-    return
-  }
+  if (!validateForm()) return
   if (authKind.value === 'userKey' && !form.userKeyName) {
     toast(t('connect.userKeyRequired'), 'error')
     return
   }
+  coerceNumbers()
   if (!form.name) form.name = form.host
   await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
   toast(t('connect.savedToast', { name: form.name }), 'success')
@@ -214,14 +253,12 @@ async function saveProfile() {
 async function connectNow() {
   form.auth = authKind.value
   form.proxy = buildProxy()
-  if (!form.host) {
-    toast(t('connect.hostRequired'), 'error')
-    return
-  }
+  if (!validateForm()) return
   if (authKind.value === 'userKey' && !form.userKeyName) {
     toast(t('connect.userKeyRequired'), 'error')
     return
   }
+  coerceNumbers()
   if (!form.name) form.name = form.host
   // 先持久化（含凭据），再发起连接——避免后端尚未读到该配置的竞态
   const saved = await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
@@ -237,9 +274,9 @@ async function connectNow() {
       <span class="cd-label">{{ t('connect.name') }}</span>
       <FTextBox v-model="form.name" :placeholder="t('connect.namePlaceholder')" />
       <span class="cd-label">{{ t('connect.host') }}</span>
-      <FTextBox v-model="form.host" :placeholder="t('connect.hostPlaceholder')" />
+      <FTextBox v-model="form.host" :placeholder="t('connect.hostPlaceholder')" :class="{ 'cd-invalid': showErr && errs.host }" />
       <span class="cd-label">{{ t('connect.port') }}</span>
-      <FTextBox v-model="form.port" placeholder="22" />
+      <FTextBox v-model="form.port" placeholder="1–65535" :class="{ 'cd-invalid': showErr && errs.port }" />
       <span class="cd-label">{{ t('connect.username') }}</span>
       <FTextBox v-model="form.username" placeholder="root" />
     </div>
@@ -288,8 +325,8 @@ async function connectNow() {
       <div v-if="proxyKind === 'socks5'" class="cd-grid cd-proxy-fields">
         <span class="cd-label">{{ t('connect.socksAddr') }}</span>
         <div class="cd-row">
-          <FTextBox v-model="socks.host" :placeholder="t('connect.proxyServer')" />
-          <FTextBox v-model="socks.port" :placeholder="t('connect.proxyPort')" class="cd-port" />
+          <FTextBox v-model="socks.host" :placeholder="t('connect.proxyServer')" :class="{ 'cd-invalid': showErr && errs.proxyHost }" />
+          <FTextBox v-model="socks.port" :placeholder="t('connect.proxyPort')" class="cd-port" :class="{ 'cd-invalid': showErr && errs.proxyPort }" />
         </div>
         <span class="cd-label">{{ t('connect.proxyUser') }}</span>
         <FTextBox v-model="socks.username" :placeholder="t('connect.proxyUserOptional')" />
@@ -299,8 +336,8 @@ async function connectNow() {
       <div v-else-if="proxyKind === 'http'" class="cd-grid cd-proxy-fields">
         <span class="cd-label">{{ t('connect.httpAddr') }}</span>
         <div class="cd-row">
-          <FTextBox v-model="http.host" :placeholder="t('connect.proxyServer')" />
-          <FTextBox v-model="http.port" :placeholder="t('connect.proxyPort')" class="cd-port" />
+          <FTextBox v-model="http.host" :placeholder="t('connect.proxyServer')" :class="{ 'cd-invalid': showErr && errs.proxyHost }" />
+          <FTextBox v-model="http.port" :placeholder="t('connect.proxyPort')" class="cd-port" :class="{ 'cd-invalid': showErr && errs.proxyPort }" />
         </div>
         <span class="cd-label">{{ t('connect.proxyUser') }}</span>
         <FTextBox v-model="http.username" :placeholder="t('connect.proxyUserPlain')" />
@@ -315,7 +352,7 @@ async function connectNow() {
       </div>
       <div v-else-if="proxyKind === 'proxyCommand'" class="cd-grid cd-proxy-fields">
         <span class="cd-label">{{ t('connect.proxyCommand') }}</span>
-        <FTextBox v-model="proxyCmd.command" :placeholder="t('connect.proxyCommandPlaceholder')" />
+        <FTextBox v-model="proxyCmd.command" :placeholder="t('connect.proxyCommandPlaceholder')" :class="{ 'cd-invalid': showErr && errs.proxyCmd }" />
         <span class="cd-label">{{ t('connect.hint') }}</span>
         <span class="cd-hint">{{ t('connect.proxyCommandHint') }}</span>
       </div>
@@ -327,11 +364,11 @@ async function connectNow() {
       <FComboBox v-model="form.term" :options="['xterm-256color', 'xterm', 'vt100', 'linux']" />
       <span class="cd-label">{{ t('connect.keepalive') }}</span>
       <div class="cd-row">
-        <FTextBox v-model="form.keepaliveInterval" placeholder="5000 (ms)" class="cd-port" />
+        <FTextBox v-model="form.keepaliveInterval" placeholder="5000（1000–3600000 ms）" class="cd-port" :class="{ 'cd-invalid': showErr && errs.keepalive }" />
         <span class="cd-hint">{{ t('connect.keepaliveUnit') }}</span>
       </div>
       <span class="cd-label">{{ t('connect.connectTimeout') }}</span>
-      <FTextBox v-model="form.connectTimeout" placeholder="10000 (ms)" class="cd-port" />
+      <FTextBox v-model="form.connectTimeout" placeholder="10000（1000–600000 ms）" class="cd-port" :class="{ 'cd-invalid': showErr && errs.timeout }" />
     </div>
 
     <template #footer>
@@ -391,3 +428,9 @@ async function connectNow() {
   flex: 1;
 }
 </style>
+
+.cd-invalid :deep(input),
+.cd-invalid {
+  border-color: var(--danger) !important;
+}
+

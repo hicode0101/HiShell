@@ -32,7 +32,16 @@ export default {
     terminal: 'Terminal',
     files: 'Files',
     refresh: 'Refresh',
+  },  validate: {
+    hostInvalid: 'Invalid host: expected an IPv4 / IPv6 address or domain name',
+    portInvalid: 'Invalid port: expected an integer between 1 and 65535',
+    keepaliveInvalid: 'Invalid keepalive: expected an integer between 1000 and 3600000 (ms)',
+    timeoutInvalid: 'Invalid timeout: expected an integer between 1000 and 600000 (ms)',
+    proxyHostInvalid: 'Invalid proxy server: expected an IP address or domain name',
+    proxyPortInvalid: 'Invalid proxy port: expected an integer between 1 and 65535',
+    proxyCmdRequired: 'Proxy Command must not be empty',
   },
+
   quickconnect: {
     title: 'Quick Connect',
     note: 'Quick connect is not saved to the session manager. Use "New Connection" to save it.',
@@ -376,7 +385,7 @@ export default {
     remote: 'Remote',
     dynamic: 'Dynamic',
     hostPlaceholder: '127.0.0.1',
-    portPlaceholder: '8000',
+    portPlaceholder: '1–65535',
     targetHostPlaceholder: '127.0.0.1',
     targetPortPlaceholder: '80',
     description: 'Description',

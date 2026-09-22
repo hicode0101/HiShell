@@ -11,6 +11,7 @@ import { useSessionsStore } from '../../stores/sessions'
 import { useProfilesStore } from '../../stores/profiles'
 import { forwardAdd, forwardRemove, forwardList } from '../../api/backend'
 import { t } from '../../i18n'
+import { isValidHost } from '../../utils/validate'
 import type { ForwardRule } from '../../api/types'
 
 const sessions = useSessionsStore()
@@ -35,6 +36,20 @@ const form = reactive({
   targetPort: '',
   description: '',
 })
+const showErr = ref(false)
+
+const errs = computed(() => {
+  const e: Record<string, string> = {}
+  if (!isValidHost(form.bindHost)) e.bindHost = t('validate.hostInvalid')
+  if (!validPort(form.bindPort)) e.bindPort = t('validate.portInvalid')
+  if (newType.value !== 'dynamic') {
+    if (!form.targetHost.trim()) e.targetHost = t('validate.hostRequired')
+    else if (!isValidHost(form.targetHost)) e.targetHost = t('validate.hostInvalid')
+    if (!validPort(form.targetPort)) e.targetPort = t('validate.portInvalid')
+  }
+  return e
+})
+
 const descriptionPlaceholder = computed(() =>
   newType.value === 'dynamic' ? t('ports.descriptionDynamic') : t('ports.description'),
 )
@@ -65,6 +80,7 @@ async function refreshLive() {
 
 watch(open, (v) => {
   resetForm()
+  showErr.value = false
   if (v) {
     void refreshLive()
     pollTimer = window.setInterval(() => void refreshLive(), 2000)
@@ -75,6 +91,7 @@ watch(open, (v) => {
 })
 
 function resetForm() {
+  showErr.value = false
   newType.value = 'local'
   Object.assign(form, { bindHost: '127.0.0.1', bindPort: '', targetHost: '127.0.0.1', targetPort: '', description: '' })
 }
@@ -93,8 +110,9 @@ function ruleSummary(r: ForwardRule): string {
 
 async function addRule() {
   if (!profile.value) return
-  if (!validPort(form.bindPort)) {
-    toast(t('ports.portInvalid'), 'error')
+  showErr.value = true
+  if (Object.keys(errs.value).length) {
+    toast(Object.values(errs.value)[0]!, 'error')
     return
   }
   if (newType.value !== 'dynamic') {
@@ -179,18 +197,18 @@ async function removeRule(id: string) {
     <!-- 添加表单 -->
     <div class="pf-section">{{ t('ports.addTitle') }}</div>
     <div class="pf-form-row">
-      <FTextBox v-model="form.bindHost" :placeholder="t('ports.hostPlaceholder')" class="pf-host" />
+      <FTextBox v-model="form.bindHost" :placeholder="t('ports.hostPlaceholder')" class="pf-host" :class="{ 'pf-invalid': showErr && errs.bindHost }" />
       <span class="pf-colon">:</span>
-      <FTextBox v-model="form.bindPort" :placeholder="t('ports.portPlaceholder')" class="pf-port" />
+      <FTextBox v-model="form.bindPort" :placeholder="t('ports.portPlaceholder')" class="pf-port" :class="{ 'pf-invalid': showErr && errs.bindPort }" />
       <span class="pf-arrow">
         <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
           <path d="M3.5 10h12M10.5 5l5 5-5 5" />
         </svg>
       </span>
       <template v-if="newType !== 'dynamic'">
-        <FTextBox v-model="form.targetHost" :placeholder="t('ports.targetHostPlaceholder')" class="pf-host" />
+        <FTextBox v-model="form.targetHost" :placeholder="t('ports.targetHostPlaceholder')" class="pf-host" :class="{ 'pf-invalid': showErr && errs.targetHost }" />
         <span class="pf-colon">:</span>
-        <FTextBox v-model="form.targetPort" :placeholder="t('ports.targetPortPlaceholder')" class="pf-port" />
+        <FTextBox v-model="form.targetPort" :placeholder="t('ports.targetPortPlaceholder')" class="pf-port" :class="{ 'pf-invalid': showErr && errs.targetPort }" />
       </template>
       <template v-else>
         <FComboBox v-model="socksType" :options="socksTypeOptions" class="pf-socks" />
@@ -371,3 +389,8 @@ async function removeRule(id: string) {
   font-size: 12px;
 }
 </style>
+
+.pf-invalid {
+  border-color: var(--danger) !important;
+}
+

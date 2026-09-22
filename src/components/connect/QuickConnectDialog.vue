@@ -9,6 +9,7 @@ import { useSessionsStore } from '../../stores/sessions'
 import { defaultProfile, type AuthKind, type SshProfile } from '../../api/types'
 import { isTauri } from '../../api/adapter'
 import { profileSave, userKeyList } from '../../api/backend'
+import { isValidHost, isValidPort } from '../../utils/validate'
 import { t } from '../../i18n'
 
 const sessions = useSessionsStore()
@@ -31,6 +32,24 @@ const form = reactive({
 const authKind = ref<AuthKind>('password')
 const userKeyNames = ref<string[]>([])
 const busy = ref(false)
+const showErr = ref(false)
+
+const errs = computed(() => {
+  const e: Record<string, string> = {}
+  if (!form.host.trim()) e.host = t('validate.hostRequired')
+  else if (!isValidHost(form.host)) e.host = t('validate.hostInvalid')
+  if (!isValidPort(form.port)) e.port = t('validate.portInvalid')
+  return e
+})
+
+function validateForm(): boolean {
+  showErr.value = true
+  if (Object.keys(errs.value).length) {
+    toast(Object.values(errs.value)[0]!, 'error')
+    return false
+  }
+  return true
+}
 
 const authOptions = computed(() => [
   { kind: 'password' as AuthKind, label: t('connect.auth.password') },
@@ -73,6 +92,7 @@ watch(
     form.privateKeyPassphrase = ''
     form.userKeyName = ''
     authKind.value = 'password'
+    showErr.value = false
   },
 )
 watch(authKind, (k) => {
@@ -142,6 +162,7 @@ function secrets(): { password?: string; passphrase?: string } | undefined {
 
 async function connectNow() {
   if (busy.value) return
+  if (!validateForm()) return
   if (!validate()) return
   busy.value = true
   try {
@@ -168,9 +189,9 @@ async function connectNow() {
     <div class="qc-body">
       <div class="qc-grid">
       <span class="lbl">{{ t('connect.host') }}</span>
-      <FTextBox v-model="form.host" spellcheck="false" :placeholder="t('connect.hostPlaceholder')" />
+      <FTextBox v-model="form.host" spellcheck="false" :placeholder="t('connect.hostPlaceholder')" :class="{ 'cd-invalid': showErr && errs.host }" />
       <span class="lbl">{{ t('connect.port') }}</span>
-      <FTextBox v-model="form.port" spellcheck="false" />
+      <FTextBox v-model="form.port" spellcheck="false" placeholder="1–65535" :class="{ 'cd-invalid': showErr && errs.port }" />
       <span class="lbl">{{ t('connect.username') }}</span>
       <FTextBox v-model="form.username" spellcheck="false" />
     </div>
@@ -253,3 +274,8 @@ async function connectNow() {
   color: var(--text-tertiary);
 }
 </style>
+
+.cd-invalid {
+  border-color: var(--danger) !important;
+}
+
