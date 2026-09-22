@@ -390,11 +390,11 @@ export default {
 
   main: {
     welcome: '欢迎使用 HiShell',
-    welcomeDesc: '一款白帽师傅喜欢用的 SSH终端 工具',
+    welcomeDesc: '一款工程师喜欢用的 SSH终端 工具',
     openSettings: '打开设置',
     aboutTitle: '关于 HiShell',
     aboutName: 'HiShell',
-    aboutDesc: '一个好用的SSH终端工具',
+    aboutDesc: '一款工程师喜欢用的 SSH终端 工具',
     aboutSiteLabel: '官网',
     aboutUrl: 'https://github.com/hicode0101/HiTools',
     aboutAuthor: '作者：hicode0101（微信）',

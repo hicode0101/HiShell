@@ -390,11 +390,11 @@ export default {
 
   main: {
     welcome: 'Welcome to HiShell',
-    welcomeDesc: 'An SSH terminal tool loved by white-hat hackers',
+    welcomeDesc: 'An SSH terminal tool favored by engineers',
     openSettings: 'Open Settings',
     aboutTitle: 'About HiShell',
     aboutName: 'HiShell',
-    aboutDesc: 'A handy SSH terminal tool',
+    aboutDesc: 'An SSH terminal tool favored by engineers',
     aboutSiteLabel: 'Website',
     aboutUrl: 'https://github.com/hicode0101/HiTools',
     aboutAuthor: 'Author: hicode0101 (WeChat)',
