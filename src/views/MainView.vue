@@ -12,13 +12,14 @@ import ConnectDialog from '../components/connect/ConnectDialog.vue'
 import PortForwardDialog from '../components/ports/PortForwardDialog.vue'
 import PromptDialog from '../components/PromptDialog.vue'
 import ImportDialog from '../components/import/ImportDialog.vue'
+import QuickConnectDialog from '../components/connect/QuickConnectDialog.vue'
 import SessionManagerDialog from '../components/SessionManagerDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
 import SettingsView from './SettingsView.vue'
 import { FButton, FDialog, FTextBox, toast } from '../ui'
 import { useSessionsStore } from '../stores/sessions'
 import { useTransfersStore } from '../stores/transfers'
-import { useProfilesStore, parseQuickConnect } from '../stores/profiles'
+import { useProfilesStore } from '../stores/profiles'
 import { useSettingsStore } from '../stores/settings'
 import { defaultProfile, type SessionTab } from '../api/types'
 import { appInfo, openConfigDir, openUrl } from '../api/backend'
@@ -38,6 +39,8 @@ const importDialogOpen = ref(false)
 const sessionManagerOpen = ref(false)
 const userKeysOpen = ref(false)
 const hotkeysOpen = ref(false)
+const quickOpen = ref(false)
+const quickInfo = ref<{ username: string; host: string; port: number } | null>(null)
 const sftpRef = ref<InstanceType<typeof SftpView>>()
 /** 后端真实版本号（关于界面显示用，随程序集版本走） */
 const appVersion = ref('')
@@ -71,11 +74,14 @@ function command(raw: string) {
       sessions.openConnectDialog()
       break
     case 'quick-connect': {
-      const info = parseQuickConnect(payload)
-      if (!info) return
-      const p = defaultProfile({ name: info.host, host: info.host, port: info.port, username: info.username })
-      // 先持久化配置（后端 ssh_connect 按 id 读取），再建会话
-      void profiles.upsert(p).then((saved) => sessions.createSession(saved))
+      // payload 是 ToolBar 解析好的信息（JSON）；直接弹快速连接对话框（认证方式可选，配置为临时）
+      try {
+        quickInfo.value = JSON.parse(payload)
+      } catch {
+        quickInfo.value = null
+      }
+      if (!quickInfo.value) return
+      quickOpen.value = true
       break
     }
     case 'new-sftp': {
@@ -383,6 +389,7 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
     <ImportDialog v-model:open="importDialogOpen" />
     <SessionManagerDialog v-model:open="sessionManagerOpen" />
     <UserKeysDialog v-model:open="userKeysOpen" />
+    <QuickConnectDialog v-model:open="quickOpen" :initial="quickInfo" />
     <!-- 连接对话框需位于会话管理器/用户密钥对话框之上（从列表编辑时叠加打开） -->
     <ConnectDialog />
 

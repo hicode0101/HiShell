@@ -12,7 +12,8 @@ pub struct ProfileOut {
 
 #[tauri::command]
 pub fn profile_list() -> Result<Vec<Profile>, String> {
-    Ok(profile_store::load())
+    // 快速连接的临时配置不进入任何列表（连接期间凭据仍可按 id 读取）
+    Ok(profile_store::load().into_iter().filter(|p| !p.temporary).collect())
 }
 
 #[tauri::command]

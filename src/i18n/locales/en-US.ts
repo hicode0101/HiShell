@@ -33,6 +33,11 @@ export default {
     files: 'Files',
     refresh: 'Refresh',
   },
+  quickconnect: {
+    title: 'Quick Connect',
+    note: 'Quick connect is not saved to the session manager. Use "New Connection" to save it.',
+  },
+
 
   menus: {
     file: 'File',
@@ -408,6 +413,8 @@ export default {
   },
 
   connect: {
+    authSection: 'Authentication',
+    privateKeyRequired: 'Select a private key file',
     newTitle: 'New Connection',
     editTitle: 'Edit Connection',
     general: 'General',

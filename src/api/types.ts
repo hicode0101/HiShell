@@ -49,6 +49,8 @@ export interface SshProfile {
   privateKeyPassphrase: string
   /** 用户密钥管理中的密钥名（auth = 'userKey' 时生效） */
   userKeyName: string
+  /** 快速连接的临时配置：真实入库（连接需要）但对所有列表隐藏，不算用户会话 */
+  temporary?: boolean
   proxy: ProxyConfig
   keepaliveInterval: number
   keepaliveCountMax: number

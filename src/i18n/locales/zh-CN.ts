@@ -33,6 +33,11 @@ export default {
     files: '文件',
     refresh: '刷新',
   },
+  quickconnect: {
+    title: '快速连接',
+    note: '快速连接不会保存到会话管理器；如需保存请使用「新建连接」。',
+  },
+
 
   menus: {
     file: '文件(F)',
@@ -410,6 +415,8 @@ export default {
   },
 
   connect: {
+    authSection: '认证',
+    privateKeyRequired: '请选择私钥文件',
     newTitle: '新建连接',
     editTitle: '编辑连接',
     general: '常规',
@@ -472,6 +479,7 @@ export default {
   },
 
   main: {
+
     welcome: '欢迎使用 HiShell',
     welcomeDesc: '一款工程师喜欢用的 SSH终端 工具',
     openSettings: '打开设置',
