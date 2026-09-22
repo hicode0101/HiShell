@@ -201,6 +201,8 @@ export default {
   },
 
   statusbar: {
+    capsLock: '大写锁定 (Caps Lock)',
+    numLock: '数字锁定 (Num Lock)',
     ready: '就绪',
     tabCount: '{n} 个选项卡',
     transfers: '{n} 个传输中',

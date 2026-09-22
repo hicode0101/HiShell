@@ -41,7 +41,9 @@ const emit = defineEmits<{
   (e: 'transfer-request', payload: TransferRequest): void
   (e: 'counts-changed', counts: { files: number; dirs: number }): void
   (e: 'path-changed', path: string): void
+  (e: 'selection-changed', entries: DirEntry[]): void
 }>()
+
 
 export interface TransferRequest {
   entries: DirEntry[]
@@ -222,6 +224,52 @@ function toggleShowHidden() {
   reload()
 }
 
+/* ---------- 列宽拖拽调整 ---------- */
+const colWidths = ref<number[]>(props.side === 'remote' ? [190, 80, 110, 170] : [230, 80, 110])
+const colMins = [100, 56, 64, 90]
+const gridStyle = computed(() => ({
+  gridTemplateColumns: [...colWidths.value.map((w) => `${w}px`), '1fr'].join(' '),
+}))
+const resizing = ref(-1)
+let resizeStartX = 0
+let resizeStartW = 0
+
+function startResize(i: number, e: MouseEvent) {
+  resizing.value = i
+  resizeStartX = e.clientX
+  resizeStartW = colWidths.value[i]
+  document.addEventListener('mousemove', onResizeMove)
+  document.addEventListener('mouseup', stopResize)
+  e.preventDefault()
+}
+function onResizeMove(e: MouseEvent) {
+  const i = resizing.value
+  if (i < 0) return
+  colWidths.value[i] = Math.max(colMins[i] ?? 60, resizeStartW + e.clientX - resizeStartX)
+}
+function stopResize() {
+  resizing.value = -1
+  document.removeEventListener('mousemove', onResizeMove)
+  document.removeEventListener('mouseup', stopResize)
+}
+
+/** 点击列表空白处（非文件行）时清除选中状态 */
+function onBodyClick(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('.ft-row')) return
+  if (selected.value.size) {
+    selected.value = new Set()
+    lastSelected.value = ''
+  }
+}
+
+// 选中变化时通知父组件（远程面板用于状态栏显示选中文件大小）
+watch(selected, () => {
+  emit(
+    'selection-changed',
+    entries.value.filter((x) => selected.value.has(x.name) && x.name !== '..'),
+  )
+})
+
 /* ---------- 加载 ---------- */
 
 async function load(p: string, pushBack = true) {
@@ -250,8 +298,8 @@ async function load(p: string, pushBack = true) {
     path.value = p
     emit('path-changed', p)
     emit('counts-changed', {
-      files: list.filter((x) => x.kind !== 'dir' && x.name !== '..').length,
-      dirs: list.filter((x) => x.kind === 'dir' && x.name !== '..').length,
+      files: shown.filter((x) => x.kind !== 'dir' && x.name !== '..').length,
+      dirs: shown.filter((x) => x.kind === 'dir' && x.name !== '..').length,
     })
   } catch (e) {
     entries.value = []
@@ -718,22 +766,30 @@ defineExpose({
 
       <div class="file-table-wrap">
         <div class="file-table">
-          <div class="ft-head">
+          <div class="ft-head" :style="gridStyle">
             <span class="col-name" @click="setSort('name')">
               {{ t('sftp.colName') }}
               <span v-if="sortKey === 'name'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span>
+              <i class="ft-grip" @mousedown.stop="startResize(0, $event)" @click.stop />
             </span>
-            <span class="col-size" @click="setSort('size')">{{ t('sftp.colSize') }} <span v-if="sortKey === 'size'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span></span>
-            <span class="col-type" @click="setSort('type')">{{ t('sftp.colType') }} <span v-if="sortKey === 'type'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span></span>
-            <span class="col-mtime" @click="setSort('mtime')">{{ t('sftp.colMtime') }} <span v-if="sortKey === 'mtime'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span></span>
+            <span class="col-size" @click="setSort('size')">{{ t('sftp.colSize') }} <span v-if="sortKey === 'size'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span>
+              <i class="ft-grip" @mousedown.stop="startResize(1, $event)" @click.stop />
+            </span>
+            <span class="col-type" @click="setSort('type')">{{ t('sftp.colType') }} <span v-if="sortKey === 'type'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span>
+              <i class="ft-grip" @mousedown.stop="startResize(2, $event)" @click.stop />
+            </span>
+            <span class="col-mtime" @click="setSort('mtime')">{{ t('sftp.colMtime') }} <span v-if="sortKey === 'mtime'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span>
+              <i v-if="side === 'remote'" class="ft-grip" @mousedown.stop="startResize(3, $event)" @click.stop />
+            </span>
             <span v-if="side === 'remote'" class="col-attrs">{{ t('sftp.colAttrs') }}</span>
           </div>
-          <div class="ft-body">
+          <div class="ft-body" @click="onBodyClick">
             <div
               v-for="(entry, idx) in sortedEntries"
               :key="entry.name"
               class="ft-row"
               :class="{ selected: selected.has(entry.name), dir: entry.kind === 'dir' }"
+              :style="gridStyle"
               draggable="true"
               @click="onRowClick($event, entry, idx)"
               @dblclick="openEntry(entry)"
@@ -1041,6 +1097,23 @@ defineExpose({
 .ft-head span {
   cursor: pointer;
   white-space: nowrap;
+  position: relative;
+  border-right: 1px solid var(--stroke-strong);
+}
+.ft-head span:last-child {
+  border-right: none;
+}
+.ft-grip {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.ft-grip:hover {
+  background: var(--stroke-divider);
 }
 .ft-head span:hover {
   color: var(--text-primary);

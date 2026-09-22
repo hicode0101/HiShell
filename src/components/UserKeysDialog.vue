@@ -485,7 +485,7 @@ async function doExport() {
   position: relative;
 }
 .uk-head > span {
-  border-right: 1px solid var(--stroke-divider);
+  border-right: 1px solid var(--stroke-strong);
 }
 .uk-head > span:last-child {
   border-right: none;

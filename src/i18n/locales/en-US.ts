@@ -199,6 +199,8 @@ export default {
   },
 
   statusbar: {
+    capsLock: 'Caps Lock',
+    numLock: 'Num Lock',
     ready: 'Ready',
     tabCount: '{n} tabs',
     transfers: '{n} transferring',

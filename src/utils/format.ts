@@ -2,8 +2,8 @@
 import { t } from '../i18n'
 
 export function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  if (!Number.isFinite(n) || n <= 0) return '0 Bytes'
+  const units = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB']
   let v = n
   let i = 0
   while (v >= 1024 && i < units.length - 1) {

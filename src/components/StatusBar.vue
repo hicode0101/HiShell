@@ -1,8 +1,28 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSessionsStore } from '../stores/sessions'
 import { useTransfersStore } from '../stores/transfers'
 import { t } from '../i18n'
+
+/* 大小写 / 数字键锁定状态：按键事件里读取（未按键时保持上次状态，默认熄灭） */
+const capsOn = ref(false)
+const numOn = ref(false)
+
+function onKeyState(e: KeyboardEvent) {
+  capsOn.value = e.getModifierState('CapsLock')
+  numOn.value = e.getModifierState('NumLock')
+}
+
+let removeKeyState: (() => void) | undefined = undefined
+onMounted(() => {
+  window.addEventListener('keydown', onKeyState)
+  window.addEventListener('keyup', onKeyState)
+  removeKeyState = () => {
+    window.removeEventListener('keydown', onKeyState)
+    window.removeEventListener('keyup', onKeyState)
+  }
+})
+onUnmounted(() => removeKeyState?.())
 
 const sessions = useSessionsStore()
 const transfers = useTransfersStore()
@@ -41,8 +61,8 @@ const statusText = computed(() => {
     <div class="st-spacer" />
     <div class="st-section">{{ t('statusbar.tabCount', { n: sessions.tabs.length }) }}</div>
     <div class="st-section chip">↑↓</div>
-    <div class="st-section chip">CAP</div>
-    <div class="st-section chip">NUM</div>
+    <div class="st-section chip lock" :class="{ on: capsOn }" :title="t('statusbar.capsLock')">CAP</div>
+    <div class="st-section chip lock" :class="{ on: numOn }" :title="t('statusbar.numLock')">NUM</div>
   </div>
 </template>
 
@@ -77,6 +97,15 @@ const statusText = computed(() => {
 }
 .chip {
   border-left: 1px solid var(--stroke-divider);
+}
+.chip.lock {
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
+.chip.lock.on {
+  color: #2fd66f;
+  opacity: 1;
+  font-weight: 700;
 }
 .transfer-indicator {
   width: 7px;

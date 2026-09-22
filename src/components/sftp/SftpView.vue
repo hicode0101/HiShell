@@ -28,6 +28,17 @@ const splitRatio = ref(0.5)
 const panesEl = ref<HTMLElement>()
 const leftCount = ref({ files: 0, dirs: 0 })
 const rightCount = ref({ files: 0, dirs: 0 })
+/** 远程面板选中的文件总大小；选中文件夹或未选中时为 null（状态栏不显示） */
+const selSize = ref<number | null>(null)
+
+function onRemoteSelection(entries: DirEntry[]) {
+  const real = entries.filter((e) => e.name !== '..')
+  if (!real.length || real.some((e) => e.kind === 'dir')) {
+    selSize.value = null
+    return
+  }
+  selSize.value = real.reduce((sum, e) => sum + (e.size || 0), 0)
+}
 const leftPath = ref(mockSpecialDirs.desktop)
 const rightPath = ref('/root')
 
@@ -105,6 +116,7 @@ function onTransfer(req: TransferRequest) {
         @transfer-request="onTransfer"
         @counts-changed="(c) => (rightCount = c)"
         @path-changed="(p) => (rightPath = p)"
+        @selection-changed="onRemoteSelection"
       />
     </div>
 
@@ -117,9 +129,9 @@ function onTransfer(req: TransferRequest) {
       </span>
       <div class="ss-spacer" />
       <span>{{ t('sftp.binary') }}</span>
-      <span>{{ t('sftp.filesCount', { n: leftCount.files + rightCount.files }) }}</span>
-      <span>{{ t('sftp.dirsCount', { n: leftCount.dirs + rightCount.dirs }) }}</span>
-      <span>{{ formatBytes(516_950_000) }}</span>
+      <span>{{ t('sftp.filesCount', { n: rightCount.files }) }}</span>
+      <span>{{ t('sftp.dirsCount', { n: rightCount.dirs }) }}</span>
+      <span v-if="selSize !== null" class="ss-size">{{ formatBytes(selSize) }}</span>
     </div>
   </div>
 </template>
@@ -186,5 +198,9 @@ function onTransfer(req: TransferRequest) {
 }
 .ss-spacer {
   flex: 1;
+}
+.ss-size {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 </style>
