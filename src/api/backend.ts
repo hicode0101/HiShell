@@ -162,6 +162,11 @@ export async function profileDelete(id: string): Promise<void> {
   mockProfileStore.remove(id)
 }
 
+/** 复制连接配置：新 id + 指定名称（重名自动递增），凭据一并复制 */
+export async function profileCopy(sourceId: string, newName: string): Promise<SshProfile> {
+  return tauriInvoke<SshProfile>('profile_copy', { sourceId, newName })
+}
+
 /* ==================== SSH 会话 ==================== */
 
 export async function sshConnect(profileId: string): Promise<number> {
@@ -402,6 +407,15 @@ export async function userKeyGenerateCancel(genId: string): Promise<void> {
   } catch {
     /* 取消失败可忽略 */
   }
+}
+
+/** 重命名用户密钥（私钥/公钥文件一并改名），返回刷新后的信息 */
+export async function userKeyRename(
+  publicPath: string,
+  privatePath: string | undefined,
+  newName: string,
+): Promise<UserKeyInfo> {
+  return tauriInvoke<UserKeyInfo>('user_key_rename', { publicPath, privatePath: privatePath ?? null, newName })
 }
 
 /** 把公钥文本保存为文件（下载目录，自动重名递增） */

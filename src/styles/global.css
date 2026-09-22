@@ -57,6 +57,26 @@ html {
   background: transparent;
 }
 
+/* 终端滚动条：xterm 视口背景接近纯黑，全局滑块色对比度不足，需要高可见度专用样式 */
+.xterm-viewport::-webkit-scrollbar {
+  width: 12px;
+}
+.xterm-viewport::-webkit-scrollbar-track {
+  background: rgba(128, 128, 128, 0.12);
+}
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(158, 156, 170, 0.55);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 8px;
+  min-height: 32px;
+}
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 178, 192, 0.8);
+  border-width: 3px;
+  background-clip: content-box;
+}
+
 /* 通用工具类 */
 .flex-1 {
   flex: 1;

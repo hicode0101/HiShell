@@ -145,6 +145,39 @@ pub fn user_key_list() -> Result<Vec<UserKeyInfo>, String> {
     Ok(out)
 }
 
+/// 重命名密钥：私钥/公钥文件一并改名，返回刷新后的密钥信息
+#[tauri::command]
+pub fn user_key_rename(
+    public_path: String,
+    private_path: Option<String>,
+    new_name: String,
+) -> Result<UserKeyInfo, String> {
+    let name = validate_key_name(&new_name)?;
+    let dir = ssh_dir().ok_or("无法定位用户主目录")?;
+    let old_pub = std::path::Path::new(&public_path);
+    if !old_pub.is_file() {
+        return Err("公钥文件不存在".into());
+    }
+    let new_priv = dir.join(&name);
+    let new_pub = dir.join(format!("{name}.pub"));
+    if new_priv.exists() || new_pub.exists() {
+        return Err(format!("同名密钥已存在：{name}"));
+    }
+
+    std::fs::rename(old_pub, &new_pub).map_err(|e| format!("公钥改名失败: {e}"))?;
+    if let Some(pp) = private_path.as_deref().filter(|p| !p.trim().is_empty()) {
+        let old_priv = std::path::Path::new(pp);
+        if old_priv.is_file() {
+            std::fs::rename(old_priv, &new_priv).map_err(|e| {
+                let _ = std::fs::rename(&new_pub, old_pub); // 回滚公钥，避免半改名状态
+                format!("私钥改名失败: {e}")
+            })?;
+        }
+    }
+
+    parse_public_key(&new_pub).ok_or_else(|| "重命名完成，但公钥解析失败".to_string())
+}
+
 /// 删除密钥：公钥必删，私钥（同名无扩展名）如存在一并删除
 #[tauri::command]
 pub fn user_key_delete(public_path: String, private_path: Option<String>) -> Result<(), String> {

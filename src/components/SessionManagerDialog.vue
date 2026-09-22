@@ -6,6 +6,7 @@
 import { computed, ref } from 'vue'
 import { FButton, FConfirmDialog, FDialog, toast } from '../ui'
 import { useProfilesStore } from '../stores/profiles'
+import { profileCopy } from '../api/backend'
 import { useSessionsStore } from '../stores/sessions'
 import type { SshProfile } from '../api/types'
 import { t } from '../i18n'
@@ -54,6 +55,17 @@ function remove(p: SshProfile) {
   deleteTarget.value = p
 }
 
+/** 复制配置：生成一份带凭据的副本（名称自动去重），不发起连接 */
+async function copyConfig(p: SshProfile) {
+  try {
+    const saved = await profileCopy(p.id, p.name + t('sessions.copySuffix'))
+    profiles.pushLoaded(saved)
+    toast(t('sessions.copiedToast', { name: saved.name }), 'success')
+  } catch (e) {
+    toast(String(e), 'error')
+  }
+}
+
 async function confirmRemove() {
   const p = deleteTarget.value
   if (!p) return
@@ -76,11 +88,27 @@ async function confirmRemove() {
           <div class="sm-addr">{{ row.addr }} · {{ t(`connect.auth.${row.profile.auth === 'keyboardInteractive' ? 'ki' : row.profile.auth === 'publicKey' ? 'privateKey' : row.profile.auth === 'agent' ? 'agent' : 'password'}`) }}</div>
         </div>
         <div class="sm-ops">
-          <FButton variant="accent" @click="connect(row.profile)">{{ t('common.connect') }}</FButton>
-          <FButton variant="subtle" @click="edit(row.profile)">{{ t('common.edit') }}</FButton>
-          <FButton variant="danger" @click="remove(row.profile)">
-            {{ t('common.delete') }}
-          </FButton>
+          <button class="sm-ic-btn connect" :title="t('common.connect')" @click="connect(row.profile)">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7.5 3v3.6M12.5 3v3.6M5.4 6.6h9.2v3.2a4.6 4.6 0 0 1-9.2 0V6.6zM10 14.4v2.8" />
+            </svg>
+          </button>
+          <button class="sm-ic-btn edit" :title="t('common.edit')" @click="edit(row.profile)">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13.1 3.6l3.3 3.3L7 16.3l-4 1 1-4 9.1-9.7zM11.7 5l3.3 3.3" />
+            </svg>
+          </button>
+          <button class="sm-ic-btn copy" :title="t('sessions.copy')" @click="copyConfig(row.profile)">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="7" y="7" width="9" height="9" rx="1.6" />
+              <path d="M12.6 4.5H5.6A1.6 1.6 0 0 0 4 6.1v7" />
+            </svg>
+          </button>
+          <button class="sm-ic-btn del" :title="t('common.delete')" @click="remove(row.profile)">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4.5 5.5h11M8 5.5V4.3c0-.44.36-.8.8-.8h2.4c.44 0 .8.36.8.8v1.2M6 5.5l.7 9.8c.04.66.6 1.2 1.27 1.2h4.06c.66 0 1.23-.54 1.27-1.2l.7-9.8M8.4 8.5v5M11.6 8.5v5" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -157,6 +185,42 @@ async function confirmRemove() {
   display: flex;
   gap: 6px;
   flex: none;
+}
+.sm-ic-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+.sm-ic-btn:hover {
+  background: var(--bg-alt-hover);
+}
+.sm-ic-btn.connect {
+  background: var(--accent);
+  color: #fff;
+}
+.sm-ic-btn.connect:hover {
+  background: var(--accent);
+  filter: brightness(1.12);
+}
+.sm-ic-btn.edit:hover {
+  color: var(--warning);
+}
+.sm-ic-btn.copy {
+  color: var(--success);
+}
+.sm-ic-btn.del {
+  color: var(--danger);
+}
+.sm-ic-btn.del:hover {
+  background: rgba(209, 52, 56, 0.12);
 }
 .sm-spacer {
   flex: 1;

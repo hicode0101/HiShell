@@ -10,6 +10,7 @@ import { FButton, FComboBox, FConfirmDialog, FDialog, FRadioGroup, FTextBox, toa
 import {
   userKeyList,
   userKeyDelete,
+  userKeyRename,
   userKeyInspect,
   userKeyImport,
   userKeyPublicContent,
@@ -59,9 +60,28 @@ function select(name: string) {
   selected.value = name
 }
 
+const editName = ref('')
+
 function openProps() {
   if (!current.value) return
+  editName.value = current.value.name
   propsOpen.value = true
+}
+
+async function saveRename() {
+  const k = current.value
+  if (!k) return
+  const nn = editName.value.trim()
+  if (!nn || nn === k.name) return
+  try {
+    const info = await userKeyRename(k.publicPath, k.privatePath, nn)
+    toast(t('userKeys.renamedToast', { name: info.name }), 'success')
+    selected.value = info.name
+    editName.value = info.name
+    await refresh()
+  } catch (e) {
+    toast(String(e), 'error')
+  }
 }
 
 function removeKey() {
@@ -293,7 +313,7 @@ async function doExport() {
             class="uk-row"
             :class="{ selected: k.name === selected }"
             :style="gridStyle"
-            :title="k.publicPath"
+            :title="k.name"
             @click="select(k.name)"
             @dblclick="selected = k.name; openProps()"
           >
@@ -409,7 +429,21 @@ async function doExport() {
   <!-- 密钥属性 -->
   <FDialog :open="propsOpen" :title="t('userKeys.propsTitle')" :width="520" @update:open="(v: boolean) => (propsOpen = v)">
     <div v-if="current" class="uk-props">
-      <span>{{ t('userKeys.colName') }}</span><span class="mono">{{ current.name }}</span>
+      <span>{{ t('userKeys.colName') }}</span>
+      <span class="rename-row">
+        <FTextBox v-model="editName" spellcheck="false" />
+        <button
+          class="ren-save"
+          :title="t('common.save')"
+          :disabled="!editName.trim() || editName.trim() === current.name"
+          @click="saveRename"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.5 3.5h9.3l2.7 2.7v9.3a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1z" />
+            <path d="M6.8 3.5v3.8h6.2V3.5M6.8 16.5v-4.6h6.4v4.6" />
+          </svg>
+        </button>
+      </span>
       <span>{{ t('userKeys.colType') }}</span><span class="mono">{{ current.keyType }}</span>
       <span>{{ t('userKeys.colBits') }}</span><span>{{ current.bits || '—' }}</span>
       <span>{{ t('userKeys.colComment') }}</span><span class="mono break">{{ current.comment || '—' }}</span>
@@ -449,6 +483,12 @@ async function doExport() {
 .uk-head > span,
 .uk-row > span {
   position: relative;
+}
+.uk-head > span {
+  border-right: 1px solid var(--stroke-divider);
+}
+.uk-head > span:last-child {
+  border-right: none;
 }
 .uk-rows.resizing {
   user-select: none;
@@ -575,6 +615,34 @@ async function doExport() {
 }
 .mono {
   font-family: 'Cascadia Mono', Consolas, monospace;
+}
+.rename-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rename-row .f-textbox {
+  flex: 1;
+}
+.ren-save {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--stroke-control);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--accent);
+  cursor: pointer;
+}
+.ren-save:hover:not(:disabled) {
+  background: var(--bg-alt-hover);
+}
+.ren-save:disabled {
+  color: var(--text-disabled);
+  cursor: default;
 }
 .break {
   word-break: break-all;

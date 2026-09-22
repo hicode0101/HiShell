@@ -54,6 +54,7 @@ export default {
     paste: '粘贴',
     selectAll: '全选',
     clearScreen: '清屏',
+    fileView: '文件视图',
     options: '设置',
     sessionManager: '会话管理',
     userKeys: '用户密钥管理',
@@ -83,6 +84,9 @@ export default {
     empty: '还没有连接配置 — 点击「新建连接」创建',
     deletedToast: '已删除连接「{name}」',
     confirmDelete: '确定要删除连接「{name}」吗？该操作不可恢复。',
+    copy: '复制配置',
+    copySuffix: '-副本',
+    copiedToast: '已复制为「{name}」',
   },
 
   userKeys: {
@@ -141,6 +145,7 @@ export default {
     wizFinish: '完成',
     wizCancel: '取消',
     wizSuccess: '密钥「{name}」已生成',
+    renamedToast: '密钥已重命名为「{name}」',
     /* 导入 / 导出 */
     importTitle: '导入用户密钥',
     importPickFile: '选择私钥文件',

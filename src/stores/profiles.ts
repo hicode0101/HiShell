@@ -54,6 +54,10 @@ export const useProfilesStore = defineStore('profiles', {
       if (idx >= 0) this.profiles[idx] = p
       else this.profiles.push(p)
     },
+    /** 后端已落库的配置（如复制生成）直接入列表 */
+    pushLoaded(p: SshProfile) {
+      if (!this.profiles.some((x) => x.id === p.id)) this.profiles.push(p)
+    },
     async remove(id: string) {
       if (isTauri) await apiProfileDelete(id).catch(() => {})
       mockProfileStore.remove(id)

@@ -54,6 +54,7 @@ export default {
     paste: 'Paste',
     selectAll: 'Select All',
     clearScreen: 'Clear Screen',
+    fileView: 'File view',
     options: 'Settings',
     sessionManager: 'Session Manager',
     userKeys: 'User Keys',
@@ -83,6 +84,9 @@ export default {
     empty: 'No connection profiles yet — click "New Connection" to create one',
     deletedToast: 'Profile "{name}" deleted',
     confirmDelete: 'Delete connection "{name}"? This cannot be undone.',
+    copy: 'Duplicate',
+    copySuffix: '-copy',
+    copiedToast: 'Duplicated as "{name}"',
   },
 
   userKeys: {
@@ -140,6 +144,7 @@ export default {
     wizFinish: 'Finish',
     wizCancel: 'Cancel',
     wizSuccess: 'Key "{name}" generated',
+    renamedToast: 'Key renamed to "{name}"',
     importTitle: 'Import User Key',
     importPickFile: 'Select private key file',
     importSource: 'Source file',
