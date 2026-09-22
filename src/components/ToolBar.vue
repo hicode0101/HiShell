@@ -41,7 +41,7 @@ function quickConnect() {
     <!-- 新建 Serial 终端 -->
     <button class="tb-btn" :title="t('toolbar.newSerial')" @click="emit('new-serial')">
 
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <svg class="ic-serial" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
         <rect x="1" y="7" width="22" height="10" rx="5" ry="5" stroke="currentColor" stroke-width="1.4" fill="none"></rect>
 
         <circle cx="7" cy="11" r="0.6" stroke="currentColor" stroke-width="0.8" fill="none"></circle>

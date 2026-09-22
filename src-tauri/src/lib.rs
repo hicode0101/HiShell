@@ -19,6 +19,7 @@ pub fn run() {
         .manage(Sessions(std::sync::Arc::new(ssh::SessionManager::new())))
         .manage(Transfers(std::sync::Arc::new(ssh::TransferManager::new())))
         .manage(commands::local::LocalManager::default())
+        .manage(commands::userkeys::KeyGenSessions::default())
         .invoke_handler(tauri::generate_handler![
             commands::fs::fs_list_dir,
             commands::fs::fs_special_dir,
@@ -61,6 +62,10 @@ pub fn run() {
             commands::import::import_apply,
             commands::userkeys::user_key_list,
             commands::userkeys::user_key_delete,
+            commands::userkeys::user_key_generate_start,
+            commands::userkeys::user_key_generate_finish,
+            commands::userkeys::user_key_generate_cancel,
+            commands::userkeys::user_key_save_public,
             commands::local::local_start,
             commands::local::local_write,
             commands::local::local_resize,

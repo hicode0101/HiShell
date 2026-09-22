@@ -33,6 +33,16 @@ portable-pty = "0.8"
 serde_yaml = "0.9"
 sha2 = "0.10"
 
+# SSH 用户密钥生成（与 russh-keys 同源 RustCrypto 生态）
+ssh-key = { version = "0.6", features = ["ed25519", "p256", "p384", "p521", "rsa", "encryption", "getrandom"] }
+rsa = "0.9"
+ed25519-dalek = "2"
+rand = "0.8"
+
+# debug 构建也对依赖开优化：RSA 大密钥生成在无优化下慢到不可用
+[profile.dev.package."*"]
+opt-level = 3
+
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
 

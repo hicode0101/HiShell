@@ -2,12 +2,13 @@
 /**
  * 用户密钥管理（参考 Xshell 用户密钥）：列出 ~/.ssh 下的密钥，
  * 右侧操作：生成 / 属性 / 删除 / 导入 / 导出。
- * 生成、导入、导出的具体逻辑按需求后续接入（当前提示待接入）。
+ * 生成走四步生成向导；导入、导出按需求后续接入（当前提示待接入）。
  */
 import { computed, ref, watch } from 'vue'
 import { FButton, FDialog, toast } from '../ui'
 import { userKeyList, userKeyDelete, type UserKeyInfo } from '../api/backend'
 import { t } from '../i18n'
+import KeyGenWizard from './KeyGenWizard.vue'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
@@ -17,6 +18,7 @@ const selected = ref('')
 const loading = ref(false)
 const confirmingDelete = ref(false)
 const propsOpen = ref(false)
+const wizardOpen = ref(false)
 
 const current = computed(() => keys.value.find((k) => k.name === selected.value))
 
@@ -45,7 +47,7 @@ function select(name: string) {
   confirmingDelete.value = false
 }
 
-/* 待接入功能（生成/导入/导出，逻辑等需求确认） */
+/* 待接入功能（导入/导出，逻辑等需求确认） */
 function pendingFeature() {
   toast(t('userKeys.todoToast'))
 }
@@ -110,7 +112,7 @@ async function removeKey() {
       </div>
 
       <div class="uk-ops">
-        <FButton @click="pendingFeature">{{ t('userKeys.generate') }}</FButton>
+        <FButton @click="wizardOpen = true">{{ t('userKeys.generate') }}</FButton>
         <FButton :disabled="!current" @click="openProps">{{ t('userKeys.props') }}</FButton>
         <FButton variant="danger" :disabled="!current" @click="removeKey">
           {{ confirmingDelete ? t('userKeys.confirmDelete') : t('common.delete') }}
@@ -124,6 +126,9 @@ async function removeKey() {
       <FButton variant="accent" @click="emit('update:open', false)">{{ t('common.close') }}</FButton>
     </template>
   </FDialog>
+
+  <!-- 密钥生成向导 -->
+  <KeyGenWizard :open="wizardOpen" @update:open="wizardOpen = $event" @generated="refresh" />
 
   <!-- 密钥属性 -->
   <FDialog :open="propsOpen" :title="t('userKeys.propsTitle')" :width="520" @update:open="(v: boolean) => (propsOpen = v)">

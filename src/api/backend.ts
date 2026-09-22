@@ -366,6 +366,49 @@ export async function userKeyDelete(publicPath: string, privatePath?: string): P
   return tauriInvoke<void>('user_key_delete', { publicPath, privatePath: privatePath ?? null })
 }
 
+export interface GeneratedKeyInfo {
+  genId: string
+  keyType: string
+  bits: number
+  /** OpenSSH 单行公钥（type blob） */
+  publicBlob: string
+}
+
+export interface GeneratedKeyPaths {
+  name: string
+  privatePath: string
+  publicKeyPath: string
+}
+
+/** 生成密钥对（RSA/ECDSA/ED25519），genId 由前端生成便于取消 */
+export async function userKeyGenerateStart(genId: string, keyType: string, bits: number): Promise<GeneratedKeyInfo> {
+  return tauriInvoke<GeneratedKeyInfo>('user_key_generate_start', { genId, keyType, bits })
+}
+
+/** 把生成好的密钥按名称/注释/口令写入 ~/.ssh */
+export async function userKeyGenerateFinish(req: {
+  genId: string
+  name: string
+  comment: string
+  passphrase: string
+}): Promise<GeneratedKeyPaths> {
+  return tauriInvoke<GeneratedKeyPaths>('user_key_generate_finish', { req })
+}
+
+/** 取消生成（生成中或已暂存均可调用） */
+export async function userKeyGenerateCancel(genId: string): Promise<void> {
+  try {
+    await tauriInvoke<void>('user_key_generate_cancel', { genId })
+  } catch {
+    /* 取消失败可忽略 */
+  }
+}
+
+/** 把公钥文本保存为文件（下载目录，自动重名递增） */
+export async function userKeySavePublic(name: string, content: string): Promise<string> {
+  return tauriInvoke<string>('user_key_save_public', { name, content })
+}
+
 /* ==================== 本地终端（PTY） ==================== */
 
 export async function localStart(): Promise<number> {
