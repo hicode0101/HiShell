@@ -523,6 +523,7 @@ export default {
     noProfileForSftp: '请先创建一个连接配置',
     noSessionForSftp: '请先打开一个会话选项卡',
     reconnecting: '正在重新连接 {host}…',
+    reconnectFailed: '重新连接失败：{reason}',
     disconnected: '已断开',
     noProfileForReconnect: '该选项卡没有关联的连接配置',
     later: '「{name}」将在后续里程碑提供',

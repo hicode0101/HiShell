@@ -519,6 +519,7 @@ export default {
     noProfileForSftp: 'Create a connection profile first',
     noSessionForSftp: 'Open a session tab first',
     reconnecting: 'Reconnecting to {host}…',
+    reconnectFailed: 'Reconnect failed: {reason}',
     disconnected: 'Disconnected',
     noProfileForReconnect: 'This tab has no connection profile',
     later: '"{name}" will arrive in a later milestone',

@@ -149,8 +149,14 @@ export const useSessionsStore = defineStore('sessions', {
       }
       return tab
     },
-    /** 重连：复用标签，重置后端会话 */
-    async reconnect(tabId: string) {      const tab = this.tabs.find((x) => x.id === tabId)
+    /**
+     * 重连：复用标签，重置后端会话。
+     * 快速连接的临时配置只存在于后端磁盘（profile_list 会过滤 temporary），
+     * 前端列表查不到——这里必须直接凭 profileId 连接，由后端按 id 读盘校验。
+     * 失败时先把状态/原因落到标签上，再把错误抛给调用方做可见提示。
+     */
+    async reconnect(tabId: string) {
+      const tab = this.tabs.find((x) => x.id === tabId)
       if (!tab || tab.kind !== 'session') return
       if (tab.sid !== undefined && isTauri) {
         await sshDisconnect(tab.sid).catch(() => {})
@@ -163,7 +169,8 @@ export const useSessionsStore = defineStore('sessions', {
           tab.sid = sid
         } catch (e) {
           tab.status = 'disconnected'
-          console.warn('ssh_connect 失败', e)
+          tab.statusMessage = String(e)
+          throw e
         }
       } else {
         setTimeout(() => {

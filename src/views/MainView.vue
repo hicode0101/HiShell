@@ -113,11 +113,10 @@ function command(raw: string) {
     case 'reconnect': {
       const tab = sessions.activeTab
       if (tab?.profileId) {
-        const p = profiles.byId(tab.profileId)
-        if (p) {
-          sessions.reconnect(tab.id)
-          toast(t('main.reconnecting', { host: p.host }))
-        }
+        // 快速连接的临时配置不进前端列表，这里不能查 profiles.byId 做门禁，
+        // 直接凭 profileId 重连（后端按 id 读盘），失败时给出可见错误
+        toast(t('main.reconnecting', { host: tab.title }))
+        sessions.reconnect(tab.id).catch((e) => toast(t('main.reconnectFailed', { reason: String(e) }), 'error'))
       } else if (tab) {
         toast(t('main.noProfileForReconnect'), 'error')
       }
