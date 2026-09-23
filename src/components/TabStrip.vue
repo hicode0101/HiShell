@@ -9,41 +9,77 @@ import type { SessionTab } from '../api/types'
 const sessions = useSessionsStore()
 const profiles = useProfilesStore()
 
-/* ---------- 标签拖拽排序 ---------- */
+/* ---------- 标签拖拽排序（鼠标模拟）----------
+ * dragDropEnabled:true 后 WebView2 拦截了 HTML5 拖拽（含标签页内部拖动），
+ * 改用 mousedown + mousemove 自行实现，复用原有的插入位置指示线视觉。 */
 const dragId = ref('')
 const dropTargetId = ref('')
 const dropBefore = ref(false)
+let pressId = ''
+let pressX = 0
+let pressY = 0
+let tabDragging = false
+let suppressClick = false
 
-function onDragStart(e: DragEvent, tab: SessionTab) {
-  dragId.value = tab.id
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('application/x-hishell-tab', tab.id)
-  }
+function onTabMouseDown(e: MouseEvent, tab: SessionTab) {
+  if (e.button !== 0) return
+  if ((e.target as HTMLElement).closest('.tab-close')) return
+  pressId = tab.id
+  pressX = e.clientX
+  pressY = e.clientY
+  tabDragging = false
+  document.addEventListener('mousemove', onTabDragMove)
+  document.addEventListener('mouseup', onTabDragUp)
 }
 
-function onDragOver(e: DragEvent, tab: SessionTab) {
-  if (!dragId.value) return
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+function onTabDragMove(e: MouseEvent) {
+  if (!pressId) return
+  if (!tabDragging) {
+    if (Math.abs(e.clientX - pressX) + Math.abs(e.clientY - pressY) < 5) return
+    tabDragging = true
+    dragId.value = pressId
+    document.body.style.userSelect = 'none'
+  }
+  // 光标落在哪个标签上 → 显示插入位置指示线
+  const hit = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest('.tab') as HTMLElement | null
+  const targetId = hit?.dataset.tabId ?? ''
+  if (!targetId || targetId === dragId.value) {
+    dropTargetId.value = ''
+    return
+  }
+  const rect = hit!.getBoundingClientRect()
   dropBefore.value = e.clientX < rect.left + rect.width / 2
-  dropTargetId.value = tab.id === dragId.value ? '' : tab.id
+  dropTargetId.value = targetId
 }
 
-function onDrop(e: DragEvent, tab: SessionTab) {
-  if (dragId.value && dropTargetId.value) {
-    sessions.moveTab(dragId.value, dropTargetId.value, dropBefore.value)
+function onTabDragUp(e: MouseEvent) {
+  document.removeEventListener('mousemove', onTabDragMove)
+  document.removeEventListener('mouseup', onTabDragUp)
+  document.body.style.userSelect = ''
+  const wasDragging = tabDragging
+  tabDragging = false
+  if (wasDragging) {
+    // 只吞掉 mouseup 后紧随的那次 click，避免残留标志吞掉下一次标签点击
+    suppressClick = true
+    setTimeout(() => {
+      suppressClick = false
+    }, 0)
+    if (dragId.value && dropTargetId.value && dropTargetId.value !== dragId.value) {
+      sessions.moveTab(dragId.value, dropTargetId.value, dropBefore.value)
+    }
   }
-  clearDrag()
-}
-
-function onDragEnd() {
-  clearDrag()
-}
-
-function clearDrag() {
+  pressId = ''
   dragId.value = ''
   dropTargetId.value = ''
   dropBefore.value = false
+}
+
+function onTabClick(tab: SessionTab) {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
+  sessions.activate(tab.id)
 }
 
 function emit(name: string) {
@@ -108,7 +144,7 @@ function tabAccent(tab: SessionTab): string {
 </script>
 
 <template>
-  <div class="tabstrip" @contextmenu="onStripContext" @auxclick.middle="sessions.closeTab(sessions.activeTabId)" @dragover.prevent>
+  <div class="tabstrip" @contextmenu="onStripContext" @auxclick.middle="sessions.closeTab(sessions.activeTabId)">
     <TransitionGroup name="tab">
       <div
         v-for="tab in sessions.tabs"
@@ -123,14 +159,11 @@ function tabAccent(tab: SessionTab): string {
         }"
         :style="{ '--tab-accent': tabAccent(tab) }"
         :title="tab.address || tab.title"
-        draggable="true"
-        @click="sessions.activate(tab.id)"
+        :data-tab-id="tab.id"
+        @click="onTabClick(tab)"
         @auxclick.middle.stop="sessions.closeTab(tab.id)"
         @contextmenu.stop="tabContextMenu($event, tab)"
-        @dragstart="onDragStart($event, tab)"
-        @dragover="onDragOver($event, tab)"
-        @drop.prevent="onDrop($event, tab)"
-        @dragend="onDragEnd"
+        @mousedown="onTabMouseDown($event, tab)"
       >
         <span v-if="tab.kind !== 'settings'" class="dot" :class="tab.status" />
         <svg v-else class="dot gear" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
