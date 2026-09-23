@@ -239,6 +239,30 @@ pub fn delete(id: &str) -> AppResult<()> {
     save(&list)
 }
 
+/// 清理全部历史临时配置（含其在 OS 凭据管理器中的凭据），返回清理条数。
+/// 快速连接每次连接都会落盘一份 temporary 配置且对列表隐藏，反复使用会无限累积。
+/// 调用时机：应用启动完成后（后台任务）——此刻不存在任何会话标签，
+/// 删除全部 temporary 必然安全；本次运行中新产生的临时配置不受影响，留待下次启动清理。
+pub fn purge_temporary() -> usize {
+    let list = load();
+    let removed: Vec<String> = list
+        .iter()
+        .filter(|p| p.temporary)
+        .map(|p| p.id.clone())
+        .collect();
+    if removed.is_empty() {
+        return 0;
+    }
+    let keep: Vec<Profile> = list.into_iter().filter(|p| !p.temporary).collect();
+    for id in &removed {
+        secrets::delete(id);
+    }
+    if save(&keep).is_err() {
+        return 0;
+    }
+    removed.len()
+}
+
 /// 按给定 id 顺序重排配置（未列出的配置按原顺序追加在后），顺序持久化
 pub fn reorder(ids: &[String]) -> AppResult<()> {
     let mut list = load();

@@ -79,6 +79,20 @@ pub fn run() {
             commands::local::local_resize,
             commands::local::local_stop,
         ])
+        .setup(|_app| {
+            // 启动完全打开后异步清理历史临时配置（快速连接每次连接都会落盘一份，
+            // 对列表隐藏且无入口删除，反复使用会无限累积）。
+            // 延迟数秒 + 独立后台线程执行：避开启动阶段的磁盘/凭据管理器争抢，
+            // 全程不触碰 UI 线程，不产生卡顿感。
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                let n = profile_store::purge_temporary();
+                if n > 0 {
+                    crate::logger::log(&format!("启动清理：已移除 {n} 条历史临时配置"));
+                }
+            });
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("HiShell 启动失败");
 }
