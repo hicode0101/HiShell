@@ -104,7 +104,7 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $exe = "src-tauri/target/${{ matrix.target }}/release/hishell.exe"
+          $exe = "src-tauri/target/${{ matrix.target }}/release/HiShell.exe"
           if (-not (Test-Path $exe)) { throw "构建产物不存在: $exe" }
           Compress-Archive -Path $exe -DestinationPath "HiShell_${{ steps.version.outputs.version }}_x64_portable.zip" -Force
 

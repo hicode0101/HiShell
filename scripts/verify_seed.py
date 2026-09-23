@@ -12,7 +12,7 @@ import time
 
 CFG = os.path.join(os.environ["APPDATA"], "hishell", "profiles.json")
 BAK = CFG + ".seed-bak"
-EXE = os.path.join(os.path.dirname(__file__), "..", "src-tauri", "target", "release", "hishell.exe")
+EXE = os.path.join(os.path.dirname(__file__), "..", "src-tauri", "target", "release", "HiShell.exe")
 ENV = dict(os.environ, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222 --remote-allow-origins=*")
 
 report = {}
@@ -43,7 +43,7 @@ try:
     )
 finally:
     # 3) 无论成败：杀掉应用并还原用户配置
-    subprocess.run(["taskkill", "/F", "/IM", "hishell.exe"], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/IM", "HiShell.exe"], capture_output=True)
     time.sleep(1)
     if os.path.exists(BAK):
         shutil.copy2(BAK, CFG)

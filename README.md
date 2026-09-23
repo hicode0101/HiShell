@@ -134,7 +134,7 @@ build.bat check     :: 仅类型检查 + cargo check
 产物位置：
 
 - 安装包：`src-tauri\target\release\bundle\nsis\*.exe`、`src-tauri\target\release\bundle\msi\*.msi`
-- 绿色版 exe：`src-tauri\target\debug\hishell.exe`（debug）或 `src-tauri\target\release\hishell.exe`
+- 绿色版 exe：`src-tauri\target\debug\HiShell.exe`（debug）或 `src-tauri\target\release\HiShell.exe`
 
 > 提示：首次 NSIS/WiX 打包工具需从 GitHub 下载，网络不通时可用 `build.bat exe` 直接出绿色版测试。
 

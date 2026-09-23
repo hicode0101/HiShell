@@ -73,7 +73,7 @@ echo ==============================================
 echo  Debug exe OK!
 echo ==============================================
 echo Portable exe:
-echo   %cd%\src-tauri\target\debug\hishell.exe
+echo   %cd%\src-tauri\target\debug\HiShell.exe
 goto :eof
 
 :build_release
@@ -100,7 +100,7 @@ echo Paths:
 echo   %cd%\src-tauri\target\release\bundle\nsis\
 echo   %cd%\src-tauri\target\release\bundle\msi\
 echo Portable exe:
-echo   %cd%\src-tauri\target\release\hishell.exe
+echo   %cd%\src-tauri\target\release\HiShell.exe
 goto :eof
 
 :build_debug
@@ -117,7 +117,7 @@ echo ==============================================
 dir /b src-tauri\target\debug\bundle\nsis\*.exe 2>nul
 echo.
 echo Portable exe (recommended for testing):
-echo   %cd%\src-tauri\target\debug\hishell.exe
+echo   %cd%\src-tauri\target\debug\HiShell.exe
 goto :eof
 
 :check
