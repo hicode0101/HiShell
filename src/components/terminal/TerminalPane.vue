@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../stores/settings'
 import { useSessionsStore } from '../../stores/sessions'
 import { t } from '../../i18n'
 import { isTauri } from '../../api/adapter'
+import { showContextMenu } from '../../ui'
 import { onSshDataFor, onLocalDataFor } from '../../stores/events'
 import { localResize, localWrite, sshResize, sshWrite } from '../../api/backend'
 import { applySettingsToTerminals, attachTerminal, detachTerminal, terminalEntry } from './terminalRegistry'
@@ -59,6 +60,45 @@ function onTabCommand(e: Event) {
       entry?.term.selectAll()
       break
   }
+}
+
+/** 终端右键菜单：复制/粘贴/全选/清屏（替代被屏蔽的 WebView2 默认右键菜单） */
+function onTermContextMenu(e: MouseEvent) {
+  const entry = terminalEntry(props.tab.id)
+  showContextMenu(e, [
+    {
+      label: t('menus.copy'),
+      icon: 'copy',
+      shortcut: 'Ctrl+Shift+C',
+      disabled: !entry?.term.hasSelection(),
+      onClick: () => {
+        if (entry && entry.term.hasSelection()) {
+          navigator.clipboard.writeText(entry.term.getSelection()).catch(() => {})
+        }
+      },
+    },
+    {
+      label: t('menus.paste'),
+      icon: 'paste',
+      shortcut: 'Ctrl+Shift+V',
+      onClick: () => {
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) entry?.term.input(text)
+          })
+          .catch(() => {})
+      },
+    },
+    { separator: true },
+    { label: t('menus.selectAll'), onClick: () => entry?.term.selectAll() },
+    {
+      label: t('menus.clearScreen'),
+      icon: 'filter',
+      shortcut: 'Ctrl+L',
+      onClick: () => entry?.term.clear(),
+    },
+  ])
 }
 
 onMounted(() => {
@@ -221,7 +261,7 @@ defineExpose({ toggleSearch })
       <button :title="t('terminal.next')" @click="findNext">▼</button>
       <button :title="t('common.close')" @click="toggleSearch">✕</button>
     </div>
-    <div ref="containerRef" class="term-container" />
+    <div ref="containerRef" class="term-container" @contextmenu="onTermContextMenu" />
   </div>
 </template>
 

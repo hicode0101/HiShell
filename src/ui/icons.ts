@@ -29,6 +29,7 @@ export const ICONS: Record<string, string> = {
   trash: `<path d="M4.5 5.5h11M8 5.5V4.3c0-.44.36-.8.8-.8h2.4c.44 0 .8.36.8.8v1.2M6 5.5l.7 9.8c.04.66.6 1.2 1.27 1.2h4.06c.66 0 1.23-.54 1.27-1.2l.7-9.8M8.4 8.5v5M11.6 8.5v5"/>`,
   edit: `<path d="M12.9 4.4l2.2 2.2L7.6 14.1l-2.9.7.7-2.9 7.5-7.5zM11.6 5.7l2.2 2.2"/>`,
   copy: `<rect x="7.5" y="7.5" width="8" height="8" rx="1"/><path d="M5.5 12.5h-.7c-.7 0-1.3-.6-1.3-1.3V4.8c0-.7.6-1.3 1.3-1.3h6.4c.7 0 1.3.6 1.3 1.3v.7"/>`,
+  paste: `<rect x="6.5" y="4" width="7" height="3" rx="1"/><path d="M6.5 5.5H5a1 1 0 0 0-1 1V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1h-1.5"/>`,
   monitor: `<rect x="3" y="4.5" width="14" height="9.5" rx="1.2"/><path d="M7 17h6M10 14v3"/>`,
   server: `<rect x="3.5" y="3.5" width="13" height="5.5" rx="1"/><rect x="3.5" y="11" width="13" height="5.5" rx="1"/><path d="M6 6.25h.01M6 13.75h.01M8.5 6.25h.01M8.5 13.75h.01"/>`,
   star: `<path d="M6 3.5h8V17l-4-3-4 3V3.5z"/>`,
