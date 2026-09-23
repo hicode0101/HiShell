@@ -2,11 +2,18 @@
 import { computed } from 'vue'
 import { useTransfersStore } from '../../stores/transfers'
 import { formatBytes, formatSpeed, formatDuration } from '../../utils/format'
-import { FProgressBar, showContextMenu } from '../../ui'
+import { FProgressBar, showContextMenu, useColResize } from '../../ui'
 import { t } from '../../i18n'
 import type { TransferItem } from '../../api/types'
 
 const transfers = useTransfersStore()
+
+/* ---------- 列宽拖拽调整（末列操作列为 1fr，不在宽度表内） ---------- */
+const { gridStyle, resizing, startResize } = useColResize(
+  // 名称 状态 进度 大小 本地路径 ⇄ 远程路径 速度 剩余 已用时
+  [150, 62, 180, 150, 240, 22, 240, 82, 70, 64],
+  [90, 52, 100, 100, 90, 18, 90, 56, 46, 46],
+)
 
 const statusLabel = computed<Record<TransferItem['status'], string>>(() => ({
   queued: t('transfer.status.queued'),
@@ -57,22 +64,23 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
 
     <div v-show="transfers.expanded" class="tq-body">
       <template v-if="transfers.activeTab === 'transfer'">
-        <div class="tq-head">
-          <span class="col-name">{{ t('transfer.colName') }}</span>
-          <span class="col-status">{{ t('transfer.colStatus') }}</span>
-          <span class="col-progress">{{ t('transfer.colProgress') }}</span>
-          <span class="col-size">{{ t('transfer.colSize') }}</span>
-          <span class="col-local">{{ t('transfer.colLocal') }}</span>
+        <div class="tq-scroll" :class="{ resizing: resizing >= 0 }">
+          <div class="tq-head" :style="gridStyle">
+          <span class="col-name">{{ t('transfer.colName') }}<i class="tq-grip" @mousedown.stop="startResize(0, $event)" @click.stop /></span>
+          <span class="col-status">{{ t('transfer.colStatus') }}<i class="tq-grip" @mousedown.stop="startResize(1, $event)" @click.stop /></span>
+          <span class="col-progress">{{ t('transfer.colProgress') }}<i class="tq-grip" @mousedown.stop="startResize(2, $event)" @click.stop /></span>
+          <span class="col-size">{{ t('transfer.colSize') }}<i class="tq-grip" @mousedown.stop="startResize(3, $event)" @click.stop /></span>
+          <span class="col-local">{{ t('transfer.colLocal') }}<i class="tq-grip" @mousedown.stop="startResize(4, $event)" @click.stop /></span>
           <span class="col-arrow"></span>
-          <span class="col-remote">{{ t('transfer.colRemote') }}</span>
-          <span class="col-speed">{{ t('transfer.colSpeed') }}</span>
-          <span class="col-eta">{{ t('transfer.colEta') }}</span>
-          <span class="col-elapsed">{{ t('transfer.colElapsed') }}</span>
+          <span class="col-remote">{{ t('transfer.colRemote') }}<i class="tq-grip" @mousedown.stop="startResize(6, $event)" @click.stop /></span>
+          <span class="col-speed">{{ t('transfer.colSpeed') }}<i class="tq-grip" @mousedown.stop="startResize(7, $event)" @click.stop /></span>
+          <span class="col-eta">{{ t('transfer.colEta') }}<i class="tq-grip" @mousedown.stop="startResize(8, $event)" @click.stop /></span>
+          <span class="col-elapsed">{{ t('transfer.colElapsed') }}<i class="tq-grip" @mousedown.stop="startResize(9, $event)" @click.stop /></span>
           <span class="col-ops"></span>
         </div>
         <div class="tq-rows">
           <div v-if="!items.length" class="tq-empty">{{ t('transfer.empty') }}</div>
-          <div v-for="it in items" :key="it.id" class="tq-row" @contextmenu.prevent="itemMenu($event, it)">
+          <div v-for="it in items" :key="it.id" class="tq-row" :style="gridStyle" @contextmenu.prevent="itemMenu($event, it)">
             <span class="col-name" :title="it.name">
               <svg v-if="it.direction === 'upload'" width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"><path d="M10 13.5v-10M6.2 6.7L10 3l3.8 3.7M4.5 16.5h11" /></svg>
               <svg v-else width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--success)" stroke-width="1.5" stroke-linecap="round"><path d="M10 3.5v9M6.2 9.3l3.8 3.7 3.8-3.7M4.5 16.5h11" /></svg>
@@ -107,6 +115,7 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
               >✕</button>
             </span>
           </div>
+        </div>
         </div>
       </template>
 
@@ -186,12 +195,53 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
 .tq-head,
 .tq-row {
   display: grid;
-  grid-template-columns: 150px 62px minmax(130px, 1.2fr) 150px minmax(120px, 1fr) 22px minmax(120px, 1fr) 82px 70px 64px 52px;
   gap: 8px;
   align-items: center;
   padding: 0 10px;
 }
+.tq-head > span {
+  position: relative;
+  border-right: 1px solid var(--stroke-strong);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tq-head > span:last-child {
+  border-right: none;
+}
+.tq-grip {
+  position: absolute;
+  top: 0;
+  right: -7px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.tq-grip:hover {
+  background: var(--stroke-divider);
+}
+.tq-scroll.resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+/* 表头与行共用一个滚动容器，固定列宽超出时横向同步滚动；表头 sticky 常驻 */
+.tq-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.tq-head,
+.tq-rows {
+  width: max-content;
+  min-width: 100%;
+}
 .tq-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-card);
   height: 26px;
   font-size: 11.5px;
   color: var(--text-secondary);
@@ -199,8 +249,7 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
   flex: none;
 }
 .tq-rows {
-  flex: 1;
-  overflow: auto;
+  flex: none;
 }
 .tq-row {
   height: 34px;

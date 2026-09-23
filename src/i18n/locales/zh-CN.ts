@@ -316,6 +316,9 @@ export default {
     levelUp: '上级',
     paneLoadingToast: '已加入 {n} 个下载任务',
     paneLoadingToastUp: '已加入 {n} 个上传任务',
+    dropUploadQueued: '已加入 {n} 个拖入项的上传队列',
+    dropLocalHint: '已忽略 {n} 个拖入项：请拖到右侧远程栏进行上传',
+    dragItems: '{n} 个项目',
   },
 
   transfer: {

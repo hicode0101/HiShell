@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SessionTab, DirEntry } from '../../api/types'
 import FilePane from './FilePane.vue'
 import type { TransferRequest } from './FilePane.vue'
 import TransferQueue from './TransferQueue.vue'
 import { useTransfersStore } from '../../stores/transfers'
-import { mockSpecialDirs } from '../../api/backend'
+import { fsStat, mockSpecialDirs } from '../../api/backend'
+import { isTauri } from '../../api/adapter'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { formatBytes } from '../../utils/format'
 import { toast } from '../../ui'
 import { t } from '../../i18n'
@@ -14,6 +16,7 @@ const props = defineProps<{ tab: SessionTab }>()
 const transfers = useTransfersStore()
 
 const remotePane = ref<InstanceType<typeof FilePane>>()
+const leftPane = ref<InstanceType<typeof FilePane>>()
 
 /** 快捷下载（工具菜单）使用：远程当前路径与选中条目 */
 function getRemotePath(): string {
@@ -61,7 +64,7 @@ function onDividerDown() {
   window.addEventListener('mouseup', up)
 }
 
-/** 拖拽传输请求：计算方向并入队（模拟速率推进，M4 换真实通道） */
+/** 拖拽传输请求：计算方向并入队（tauri 走后端真实通道，浏览器为模拟） */
 function onTransfer(req: TransferRequest) {
   if (req.from === 'remote') {
     for (const entry of req.entries) {
@@ -95,17 +98,164 @@ function onTransfer(req: TransferRequest) {
     toast(t('sftp.paneLoadingToastUp', { n: req.entries.length }), 'success')
   }
 }
+
+/* ---------- 系统文件拖入 ----------
+ * dragDropEnabled:true 时 OS 拖放被 Tauri 拦截，HTML5 File 对象不再出现，
+ * 由 onDragDropEvent 提供真实文件路径。落在远程栏 → 真实路径上传；
+ * 落在本地栏 → 单个目录直接定位过去。 */
+
+type DragSide = 'local' | 'remote'
+
+function hitPane(x: number, y: number): DragSide | null {
+  const pairs: Array<[DragSide, InstanceType<typeof FilePane> | undefined]> = [
+    ['local', leftPane.value],
+    ['remote', remotePane.value],
+  ]
+  for (const [side, pane] of pairs) {
+    const el = pane?.rootEl
+    if (!el) continue
+    const r = el.getBoundingClientRect()
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return side
+  }
+  return null
+}
+
+function setOver(side: DragSide | null) {
+  leftPane.value?.setExternalOver(side === 'local')
+  remotePane.value?.setExternalOver(side === 'remote')
+}
+
+async function onExternalDrop(side: DragSide, paths: string[]) {
+  if (!paths.length) return
+  if (side === 'remote') {
+    const tab = props.tab
+    if (tab.status !== 'connected' || tab.sid === undefined) {
+      toast(t('sftp.notConnected'), 'error')
+      return
+    }
+    let n = 0
+    for (const p of paths) {
+      let name = p.split(/[\\/]/).filter(Boolean).pop() || p
+      let isDir = false
+      let size = 0
+      try {
+        const st = await fsStat(p)
+        if (st.name) name = st.name
+        isDir = st.kind === 'dir'
+        size = st.size || 0
+      } catch {
+        /* stat 失败仍入队，由后端给出真实错误 */
+      }
+      const base = rightPath.value === '/' ? '' : rightPath.value
+      await transfers.submit({
+        sid: tab.sid,
+        name,
+        direction: 'upload',
+        isDir,
+        localPath: p,
+        remotePath: `${base}/${name}${isDir ? '/' : ''}`,
+        total: size,
+      })
+      n++
+    }
+    if (n) toast(t('sftp.dropUploadQueued', { n }), 'success')
+  } else {
+    const st = paths.length === 1 ? await fsStat(paths[0]!).catch(() => null) : null
+    if (st?.kind === 'dir') {
+      leftPane.value?.navigateTo(paths[0]!)
+      return
+    }
+    toast(t('sftp.dropLocalHint', { n: paths.length }), 'info')
+  }
+}
+
+/* ---------- 窗格间行拖拽（鼠标模拟，事件来自 FilePane） ---------- */
+
+function onPaneDragMove(x: number, y: number, from: 'local' | 'remote') {
+  const side = hitPane(x, y)
+  setOver(side && side !== from ? side : null)
+}
+
+function onPaneDragDrop(x: number, y: number, payload: TransferRequest) {
+  const side = hitPane(x, y)
+  setOver(null)
+  if (side && side !== payload.from) onTransfer(payload)
+}
+
+/* ---------- 传输完成自动刷新对应窗格 ---------- */
+
+const refreshedDone = new Set<string>()
+
+watch(
+  () => transfers.items.map((i) => `${i.id}:${i.status}`).join('|'),
+  () => {
+    let up = false
+    let down = false
+    for (const it of transfers.items) {
+      if (it.status !== 'done' || refreshedDone.has(it.id) || it.sid !== props.tab.sid) continue
+      if (it.direction === 'upload') {
+        const base = `${rightPath.value.replace(/\/+$/, '')}/`
+        if (rightPath.value === '/' || it.remotePath.startsWith(base)) {
+          refreshedDone.add(it.id)
+          up = true
+        }
+      } else {
+        const base = `${leftPath.value.replace(/[\\/]+$/, '')}\\`
+        if (it.localPath.toLowerCase().startsWith(base.toLowerCase())) {
+          refreshedDone.add(it.id)
+          down = true
+        }
+      }
+    }
+    if (up) remotePane.value?.reload()
+    if (down) leftPane.value?.reload()
+  },
+)
+
+let unlistenDrag: (() => void) | null = null
+
+onMounted(async () => {
+  if (!isTauri) return
+  try {
+    unlistenDrag = await getCurrentWebview().onDragDropEvent((ev) => {
+      const p = ev.payload
+      if (p.type === 'leave') {
+        setOver(null)
+        return
+      }
+      // 事件坐标为物理像素，换算为 CSS 逻辑像素后做命中判定
+      const dpr = window.devicePixelRatio || 1
+      const side = hitPane(p.position.x / dpr, p.position.y / dpr)
+      if (p.type === 'drop') {
+        setOver(null)
+        if (side) void onExternalDrop(side, p.paths)
+      } else {
+        setOver(side)
+      }
+    })
+  } catch {
+    /* 事件不可用时保持 HTML5 拖放路径 */
+  }
+})
+
+onUnmounted(() => {
+  unlistenDrag?.()
+  unlistenDrag = null
+})
 </script>
 
 <template>
   <div class="sftp-view">
     <div ref="panesEl" class="panes">
       <FilePane
+        ref="leftPane"
         side="local"
         :style="{ width: `calc(${splitRatio * 100}% - 5px)` }"
         @transfer-request="onTransfer"
         @counts-changed="(c) => (leftCount = c)"
         @path-changed="(p) => (leftPath = p)"
+        @drag-move="onPaneDragMove"
+        @drag-drop="onPaneDragDrop"
       />
       <div class="divider" :class="{ dragging: dividerDragging }" @mousedown="onDividerDown" />
       <FilePane
@@ -117,6 +267,8 @@ function onTransfer(req: TransferRequest) {
         @counts-changed="(c) => (rightCount = c)"
         @path-changed="(p) => (rightPath = p)"
         @selection-changed="onRemoteSelection"
+        @drag-move="onPaneDragMove"
+        @drag-drop="onPaneDragDrop"
       />
     </div>
 

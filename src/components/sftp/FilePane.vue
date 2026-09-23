@@ -3,10 +3,11 @@
  * 文件窗格：本地 / 远程通用。
  * - 本地：真实列目录（Tauri）/ mock 文件树（浏览器）
  * - 远程：真实 SFTP（sftp_list），连接前显示提示
- * - 拖拽：行可拖拽 → 落到对侧窗格入传输队列；接受系统文件拖入
+ * - 拖拽：行可拖拽 → 落到对侧窗格入传输队列；系统文件拖入由 SftpView 经
+ *   Tauri drag-drop 事件处理（真实路径），浏览器预览模式仍走 HTML5 files
  * - 右键：下载/上传、重命名、删除、属性、新建文件夹、双击打开（远程文件先下载到临时目录）
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { DirEntry, SessionTab } from '../../api/types'
 import {
   listLocalDir,
@@ -30,7 +31,7 @@ import { isTauri } from '../../api/adapter'
 import { useTransfersStore } from '../../stores/transfers'
 import { formatBytes, formatTime, fileKindLabel } from '../../utils/format'
 import { t } from '../../i18n'
-import { FButton, FTextBox, FDialog, showContextMenu, toast } from '../../ui'
+import { FButton, FTextBox, FDialog, showContextMenu, toast, useColResize } from '../../ui'
 
 const props = defineProps<{
   side: 'local' | 'remote'
@@ -42,6 +43,8 @@ const emit = defineEmits<{
   (e: 'counts-changed', counts: { files: number; dirs: number }): void
   (e: 'path-changed', path: string): void
   (e: 'selection-changed', entries: DirEntry[]): void
+  (e: 'drag-move', x: number, y: number, from: 'local' | 'remote'): void
+  (e: 'drag-drop', x: number, y: number, payload: TransferRequest): void
 }>()
 
 
@@ -225,33 +228,11 @@ function toggleShowHidden() {
 }
 
 /* ---------- 列宽拖拽调整 ---------- */
-const colWidths = ref<number[]>(props.side === 'remote' ? [190, 80, 110, 170] : [230, 80, 110])
-const colMins = [100, 56, 64, 90]
-const gridStyle = computed(() => ({
-  gridTemplateColumns: [...colWidths.value.map((w) => `${w}px`), '1fr'].join(' '),
-}))
-const resizing = ref(-1)
-let resizeStartX = 0
-let resizeStartW = 0
-
-function startResize(i: number, e: MouseEvent) {
-  resizing.value = i
-  resizeStartX = e.clientX
-  resizeStartW = colWidths.value[i]
-  document.addEventListener('mousemove', onResizeMove)
-  document.addEventListener('mouseup', stopResize)
-  e.preventDefault()
-}
-function onResizeMove(e: MouseEvent) {
-  const i = resizing.value
-  if (i < 0) return
-  colWidths.value[i] = Math.max(colMins[i] ?? 60, resizeStartW + e.clientX - resizeStartX)
-}
-function stopResize() {
-  resizing.value = -1
-  document.removeEventListener('mousemove', onResizeMove)
-  document.removeEventListener('mouseup', stopResize)
-}
+const rootEl = ref<HTMLElement>()
+const { gridStyle, resizing, startResize } = useColResize(
+  props.side === 'remote' ? [190, 80, 110, 170] : [230, 80, 110],
+  [100, 56, 64, 90],
+)
 
 /** 点击列表空白处（非文件行）时清除选中状态 */
 function onBodyClick(e: MouseEvent) {
@@ -378,6 +359,10 @@ async function gotoSpecial(kind: string) {
 /* ---------- 选择 / 排序 ---------- */
 
 function onRowClick(e: MouseEvent, entry: DirEntry, idx: number) {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
   if (e.shiftKey && lastSelected.value) {
     const start = entries.value.findIndex((x) => x.name === lastSelected.value)
     const range = entries.value.slice(Math.min(start, idx), Math.max(start, idx) + 1)
@@ -428,26 +413,69 @@ const counts = computed(() => ({
   dirs: entries.value.filter((e) => e.kind === 'dir' && e.name !== '..').length,
 }))
 
-/* ---------- 拖拽 ---------- */
+/* ---------- 行拖拽（鼠标模拟） ----------
+ * dragDropEnabled:true 后 WebView2 拦截了全部 HTML5 拖拽（含面板之间），
+ * 因此用 mousedown + mousemove 自行实现：超过位移阈值出现 ghost，
+ * 松开时由 SftpView 按落点判定目标窗格。 */
 
-const MIME = 'application/x-hishell-transfer'
+const dragGhost = ref<{ x: number; y: number; label: string } | null>(null)
+let pressEntries: DirEntry[] | null = null
+let pressX = 0
+let pressY = 0
+let rowDragging = false
+let suppressClick = false
 
-function onDragStart(e: DragEvent, entry: DirEntry) {
-  const sel = selected.value.has(entry.name) ? entries.value.filter((x) => selected.value.has(x.name)) : [entry]
-  e.dataTransfer?.setData(MIME, JSON.stringify({ from: props.side, fromPath: path.value, entries: sel }))
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'
+function onRowMouseDown(e: MouseEvent, entry: DirEntry) {
+  if (e.button !== 0) return
+  const sel = entries.value.filter((x) => selected.value.has(x.name))
+  const items = (sel.some((x) => x.name === entry.name) ? sel : [entry]).filter((x) => x.name !== '..')
+  pressEntries = items
+  pressX = e.clientX
+  pressY = e.clientY
+  rowDragging = false
+  document.addEventListener('mousemove', onRowDragMove)
+  document.addEventListener('mouseup', onRowDragUp)
 }
 
+function onRowDragMove(e: MouseEvent) {
+  if (!pressEntries || !pressEntries.length) return
+  if (!rowDragging) {
+    if (Math.abs(e.clientX - pressX) + Math.abs(e.clientY - pressY) < 5) return
+    rowDragging = true
+    document.body.style.userSelect = 'none'
+  }
+  dragGhost.value = {
+    x: e.clientX,
+    y: e.clientY,
+    label: pressEntries.length > 1 ? t('sftp.dragItems', { n: pressEntries.length }) : pressEntries[0]!.name,
+  }
+  emit('drag-move', e.clientX, e.clientY, props.side)
+}
+
+function onRowDragUp(e: MouseEvent) {
+  document.removeEventListener('mousemove', onRowDragMove)
+  document.removeEventListener('mouseup', onRowDragUp)
+  document.body.style.userSelect = ''
+  const dragging = rowDragging
+  rowDragging = false
+  dragGhost.value = null
+  const payload = pressEntries
+  pressEntries = null
+  if (dragging && payload && payload.length) {
+    // 只吞掉 mouseup 后紧随的那次 click（拖拽跨元素时浏览器不会再派发行 click，
+    // 定时复位避免残留标志吞掉用户下一次点击）
+    suppressClick = true
+    setTimeout(() => {
+      suppressClick = false
+    }, 0)
+    emit('drag-drop', e.clientX, e.clientY, { entries: payload, from: props.side, fromPath: path.value })
+  }
+}
+
+/** 系统外部文件拖入（仅浏览器预览模式；tauri 下由 SftpView 经 Tauri 事件处理） */
 function onDrop(e: DragEvent) {
   dragOver.value = false
   e.preventDefault()
-  const raw = e.dataTransfer?.getData(MIME)
-  if (raw) {
-    const payload = JSON.parse(raw) as TransferRequest
-    if (payload.from !== props.side) emit('transfer-request', payload)
-    return
-  }
-  // 系统外部文件拖入
   const files = Array.from(e.dataTransfer?.files ?? [])
   if (!files.length) return
   const entriesPayload: DirEntry[] = files.map((f) => ({
@@ -457,6 +485,29 @@ function onDrop(e: DragEvent) {
     mtime: f.lastModified,
   }))
   emit('transfer-request', { entries: entriesPayload, from: props.side, fromPath: path.value })
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onRowDragMove)
+  document.removeEventListener('mouseup', onRowDragUp)
+  document.body.style.userSelect = ''
+})
+
+/* ---------- 键盘：Delete 删除选中项（带确认对话框） ---------- */
+
+function onPaneKeydown(e: KeyboardEvent) {
+  if ((e.target as HTMLElement).closest('input, textarea, [contenteditable]')) return
+  if (e.key === 'Delete') {
+    e.preventDefault()
+    deleteSelection()
+  }
+}
+
+function deleteSelection() {
+  const targets = entries.value.filter((x) => selected.value.has(x.name) && x.name !== '..')
+  if (!targets.length || dialog.value) return
+  dialogTargets.value = targets
+  dialog.value = 'delete'
 }
 
 /* ---------- 右键菜单 ---------- */
@@ -698,6 +749,14 @@ function joinPath(base: string, name: string): string {
 
 defineExpose({
   counts,
+  /** 根元素：SftpView 用于 Tauri 系统拖放的落点命中判定 */
+  rootEl,
+  /** 系统文件拖入悬停高亮（Tauri 拦截了原生 HTML5 事件，由 SftpView 驱动） */
+  setExternalOver: (v: boolean) => {
+    dragOver.value = v
+  },
+  navigateTo: (p: string) => load(p),
+  reload,
   /** 快捷下载等场景：获取当前选中的真实条目 */
   getSelectedEntries: () => entries.value.filter((x) => selected.value.has(x.name) && x.name !== '..'),
 })
@@ -705,8 +764,11 @@ defineExpose({
 
 <template>
   <div
+    ref="rootEl"
     class="file-pane"
     :class="{ 'drag-over': dragOver, loading, 'is-remote': side === 'remote' }"
+    tabindex="0"
+    @keydown="onPaneKeydown"
     @dragover.prevent="dragOver = true"
     @dragleave="dragOver = false"
     @drop="onDrop"
@@ -790,10 +852,9 @@ defineExpose({
               class="ft-row"
               :class="{ selected: selected.has(entry.name), dir: entry.kind === 'dir' }"
               :style="gridStyle"
-              draggable="true"
               @click="onRowClick($event, entry, idx)"
               @dblclick="openEntry(entry)"
-              @dragstart="onDragStart($event, entry)"
+              @mousedown="onRowMouseDown($event, entry)"
               @contextmenu.prevent.stop="rowContextMenu($event, entry)"
             >
               <span class="col-name">
@@ -932,6 +993,16 @@ defineExpose({
         <FButton variant="accent" @click="dialog = null">{{ t('common.close') }}</FButton>
       </template>
     </FDialog>
+
+    <!-- 行拖拽跟随 ghost（鼠标模拟拖拽） -->
+    <div
+      v-if="dragGhost"
+      class="drag-ghost"
+      :style="{ left: `${dragGhost.x + 14}px`, top: `${dragGhost.y + 10}px` }"
+    >
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M6 3.5h4.8L15.5 8v8.5a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1zM10.5 3.8V8h4.6" /></svg>
+      <span class="drag-ghost-label">{{ dragGhost.label }}</span>
+    </div>
   </div>
 </template>
 
@@ -950,6 +1021,33 @@ defineExpose({
 .file-pane.drag-over {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+.file-pane:focus {
+  outline: none;
+}
+.file-pane:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.drag-ghost {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.drag-ghost-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pane-head {
   display: flex;

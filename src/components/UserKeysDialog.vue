@@ -6,7 +6,7 @@
  * 导出支持公钥（OpenSSH / IETF SECSH）与私钥（可重设口令加密）。
  */
 import { computed, ref, watch } from 'vue'
-import { FButton, FComboBox, FConfirmDialog, FDialog, FRadioGroup, FTextBox, toast } from '../ui'
+import { FButton, FComboBox, FConfirmDialog, FDialog, FRadioGroup, FTextBox, toast, useColResize } from '../ui'
 import {
   userKeyList,
   userKeyDelete,
@@ -105,33 +105,7 @@ async function confirmDelete() {
 }
 
 /* ---------- 列宽拖拽调整 ---------- */
-const colWidths = ref<number[]>([170, 110, 60])
-const gridStyle = computed(() => ({
-  gridTemplateColumns: colWidths.value.map((w) => `${w}px`).join(' ') + ' 1fr',
-}))
-const resizing = ref(-1)
-let resizeStartX = 0
-let resizeStartW = 0
-const colMinWidths = [80, 60, 40]
-
-function startResize(i: number, e: MouseEvent) {
-  resizing.value = i
-  resizeStartX = e.clientX
-  resizeStartW = colWidths.value[i]
-  document.addEventListener('mousemove', onResizeMove)
-  document.addEventListener('mouseup', stopResize)
-  e.preventDefault()
-}
-function onResizeMove(e: MouseEvent) {
-  const i = resizing.value
-  if (i < 0) return
-  colWidths.value[i] = Math.max(colMinWidths[i] ?? 40, resizeStartW + e.clientX - resizeStartX)
-}
-function stopResize() {
-  resizing.value = -1
-  document.removeEventListener('mousemove', onResizeMove)
-  document.removeEventListener('mouseup', stopResize)
-}
+const { gridStyle, resizing, startResize } = useColResize([170, 110, 60], [80, 60, 40])
 
 /* ---------- 导入 ---------- */
 

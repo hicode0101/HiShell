@@ -314,6 +314,9 @@ export default {
     levelUp: 'Up',
     paneLoadingToast: '{n} download task(s) queued',
     paneLoadingToastUp: '{n} upload task(s) queued',
+    dropUploadQueued: 'Queued {n} dropped item(s) for upload',
+    dropLocalHint: 'Ignored {n} dropped item(s): drop on the remote pane to upload',
+    dragItems: '{n} item(s)',
   },
 
   transfer: {
