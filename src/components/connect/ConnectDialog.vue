@@ -12,6 +12,8 @@ import { t } from '../../i18n'
 const sessions = useSessionsStore()
 const profilesStore = useProfilesStore()
 
+const emit = defineEmits<{ (e: 'connected'): void }>()
+
 const open = computed({
   get: () => sessions.connectDialogOpen,
   set: (v) => (sessions.connectDialogOpen = v),
@@ -264,6 +266,8 @@ async function connectNow() {
   const saved = await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
   sessions.createSession(JSON.parse(JSON.stringify(saved)))
   open.value = false
+  // 通知外层：若会话管理器打开着（从列表新建/编辑进入），一并关闭
+  emit('connected')
 }
 </script>
 

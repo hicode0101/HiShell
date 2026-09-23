@@ -134,10 +134,20 @@ function command(raw: string) {
     case 'view-terminal':
       if (sessions.activeTab?.kind === 'session') sessions.setViewMode(sessions.activeTab.id, 'terminal')
       break
-    case 'view-sftp':
-      if (sessions.activeTab?.kind === 'session') sessions.setViewMode(sessions.activeTab.id, 'sftp')
-      else toast(t('main.noSessionForSftp'), 'error')
+    case 'view-sftp': {
+      const tab = sessions.activeTab
+      if (tab?.kind !== 'session') {
+        toast(t('main.noSessionForSftp'), 'error')
+        break
+      }
+      // SFTP 需要真实通道：仅已连接会话可切换到「文件」视图
+      if (tab.status !== 'connected') {
+        toast(t('sftp.needConnected'), 'error')
+        break
+      }
+      sessions.setViewMode(tab.id, 'sftp')
       break
+    }
     case 'open-settings':
       sessions.openSettings()
       break
@@ -390,8 +400,9 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
     <SessionManagerDialog v-model:open="sessionManagerOpen" />
     <UserKeysDialog v-model:open="userKeysOpen" />
     <QuickConnectDialog v-model:open="quickOpen" :initial="quickInfo" />
-    <!-- 连接对话框需位于会话管理器/用户密钥对话框之上（从列表编辑时叠加打开） -->
-    <ConnectDialog />
+    <!-- 连接对话框需位于会话管理器/用户密钥对话框之上（从列表编辑时叠加打开）；
+         从会话管理器的新建/编辑里点「连接」时，同步关闭管理器 -->
+    <ConnectDialog @connected="sessionManagerOpen = false" />
 
     <FDialog v-model:open="hotkeysOpen" :title="t('menus.hotkeys')" :width="480">
       <div class="hotkeys-list">

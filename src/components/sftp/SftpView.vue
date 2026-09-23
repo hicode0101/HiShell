@@ -66,6 +66,14 @@ function onDividerDown() {
 
 /** 拖拽传输请求：计算方向并入队（tauri 走后端真实通道，浏览器为模拟） */
 function onTransfer(req: TransferRequest) {
+  // 远程方向需要真实通道：断开时拦截并提示
+  if (req.from === 'remote' && props.tab.status !== 'connected') {
+    toast(
+      t(props.tab.status === 'disconnected' ? 'sftp.disconnectedToast' : 'sftp.notConnected'),
+      'error',
+    )
+    return
+  }
   if (req.from === 'remote') {
     for (const entry of req.entries) {
       if (entry.name === '..') continue
@@ -130,7 +138,10 @@ async function onExternalDrop(side: DragSide, paths: string[]) {
   if (side === 'remote') {
     const tab = props.tab
     if (tab.status !== 'connected' || tab.sid === undefined) {
-      toast(t('sftp.notConnected'), 'error')
+      toast(
+        t(tab.status === 'disconnected' ? 'sftp.disconnectedToast' : 'sftp.notConnected'),
+        'error',
+      )
       return
     }
     let n = 0

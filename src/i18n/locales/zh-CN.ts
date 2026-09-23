@@ -87,6 +87,7 @@ export default {
     newSerial: '新建 Serial 终端',
     newTelnet: '新建 Telnet 终端',
     sessionManager: '会话管理',
+    userKeys: '用户密钥管理',
     disconnect: '断开连接',
     settings: '设置',
     quickConnectPlaceholder: '快速连接：ssh://用户名@主机:端口，回车连接',
@@ -319,6 +320,8 @@ export default {
     dropUploadQueued: '已加入 {n} 个拖入项的上传队列',
     dropLocalHint: '已忽略 {n} 个拖入项：请拖到右侧远程栏进行上传',
     dragItems: '{n} 个项目',
+    needConnected: '请先连接服务器，再使用「文件」功能',
+    disconnectedToast: '连接已断开，无法执行文件操作',
   },
 
   transfer: {

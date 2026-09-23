@@ -74,6 +74,14 @@ function quickConnect() {
       </svg>
     </button>
 
+    <!-- 用户密钥管理 -->
+    <button class="tb-btn" :title="t('toolbar.userKeys')" @click="emit('user-keys')">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="6.8" cy="13.2" r="3.3" />
+        <path d="M9.3 10.7l6.6-6.6M13.4 6.6l2.2 2.2M11.3 8.7l2.2 2.2" />
+      </svg>
+    </button>
+
     <div class="tb-spacer" />
 
     <div class="address-bar">

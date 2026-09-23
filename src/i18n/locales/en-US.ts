@@ -87,6 +87,7 @@ export default {
     newSerial: 'New Serial Terminal',
     newTelnet: 'New Telnet Terminal',
     sessionManager: 'Session Manager',
+    userKeys: 'User Keys',
     disconnect: 'Disconnect',
     settings: 'Settings',
     quickConnectPlaceholder: 'Quick connect: ssh://user@host:port, press Enter',
@@ -317,6 +318,8 @@ export default {
     dropUploadQueued: 'Queued {n} dropped item(s) for upload',
     dropLocalHint: 'Ignored {n} dropped item(s): drop on the remote pane to upload',
     dragItems: '{n} item(s)',
+    needConnected: 'Connect to the server before using the Files view',
+    disconnectedToast: 'Connection lost — file operations are unavailable',
   },
 
   transfer: {

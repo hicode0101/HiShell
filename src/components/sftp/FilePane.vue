@@ -86,24 +86,28 @@ function targetPath(entry: DirEntry): string {
 }
 
 function openRename(entry: DirEntry) {
+  if (!ensureRemote()) return
   dialogTargets.value = [entry]
   dialogName.value = entry.name
   dialog.value = 'rename'
 }
 
 function openNewFolder() {
+  if (!ensureRemote()) return
   dialogTargets.value = []
   dialogName.value = t('sftp.newFolderDefault')
   dialog.value = 'newFolder'
 }
 
 function openDelete(entry: DirEntry) {
+  if (!ensureRemote()) return
   const sel = entries.value.filter((x) => selected.value.has(x.name))
   dialogTargets.value = sel.length > 1 && sel.some((x) => x.name === entry.name) ? sel : [entry]
   dialog.value = 'delete'
 }
 
 async function openProps(entry: DirEntry) {
+  if (!ensureRemote()) return
   dialog.value = 'props'
   propsLoading.value = true
   propsData.value = null
@@ -223,6 +227,7 @@ const quickLinks = [
 const showHidden = ref(false)
 
 function toggleShowHidden() {
+  if (!ensureRemote()) return
   showHidden.value = !showHidden.value
   reload()
 }
@@ -251,9 +256,38 @@ watch(selected, () => {
   )
 })
 
+/* ---------- 远程操作守卫：连接断开后拦截一切远程文件操作 ----------
+ * - disconnected：阻断并弹右下角提示（用户显式操作）
+ * - connecting：仅静默放行导航类初始加载（挂载时握手未完成，失败由既有的
+ *   窗格错误展示），操作类（重命名/删除等）一律阻断
+ * - 重连成功后守卫自动放行，watch(connected) 会重新加载目录 */
+
+function toastDisconnected() {
+  toast(t('sftp.disconnectedToast'), 'error')
+}
+
+/** 操作类守卫：非已连接一律阻断 */
+function ensureRemote(): boolean {
+  if (props.side === 'local') return true
+  if (props.session?.status === 'connected') return true
+  if (props.session?.status === 'disconnected') toastDisconnected()
+  return false
+}
+
+/** 导航类守卫：断开状态阻断并提示；connecting 放行（初始加载） */
+function navAllowed(): boolean {
+  if (props.side === 'local') return true
+  if (props.session?.status === 'disconnected') {
+    toastDisconnected()
+    return false
+  }
+  return true
+}
+
 /* ---------- 加载 ---------- */
 
 async function load(p: string, pushBack = true) {
+  if (!navAllowed()) return
   loading.value = true
   selected.value = new Set()
   try {
@@ -637,10 +671,7 @@ function octalFromAttrs(attrs: string | undefined): string {
 
 async function openChmod(entry: DirEntry) {
   if (props.side !== 'remote') return
-  if (props.session?.sid === undefined) {
-    toast(t('sftp.notConnected'), 'error')
-    return
-  }
+  if (!ensureRemote()) return
   permName.value = entry.name
   permPath.value = targetPath(entry)
   permIsDir.value = entry.kind === 'dir'
@@ -693,10 +724,7 @@ async function openEntry(entry: DirEntry) {
     return
   }
   // 远程文件：下载到临时目录后用系统默认程序打开
-  if (props.session?.status !== 'connected' || props.session?.sid === undefined) {
-    toast(t('sftp.notConnected'), 'error')
-    return
-  }
+  if (!ensureRemote()) return
   try {
     const temp = await specialDir('temp')
     const targetDir = `${temp.replace(/[\\/]+$/, '')}\\hishell-open`
