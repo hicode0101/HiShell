@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useSessionsStore } from '../stores/sessions'
 import { parseQuickConnect } from '../stores/profiles'
+import { isValidHost } from '../utils/validate'
 import { toast } from '../ui'
 import { t } from '../i18n'
 
@@ -12,7 +13,28 @@ function emit(name: string) {
   window.dispatchEvent(new CustomEvent('hishell-command', { detail: name }))
 }
 
+/** 归一化：去所有空白、IPv6 去方括号、转小写 */
+function normalizeHostInput(input: string): string {
+  return input
+    .replace(/\s+/g, '')
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .toLowerCase()
+}
+
 function quickConnect() {
+  // 未带 ssh:// 前缀：整体视为主机地址（自动补 ssh://，用户名 root、端口 22），
+  // 且必须通过格式分派校验（纯数字点分 → IPv4 严格；含冒号 → IPv6；其余 → 域名）
+  if (!/^ssh:\/\//i.test(quickInput.value)) {
+    const host = normalizeHostInput(quickInput.value)
+    if (!isValidHost(host)) {
+      toast(t('toolbar.parseError'), 'error')
+      return
+    }
+    emit('quick-connect:' + JSON.stringify({ username: 'root', host, port: 22 }))
+    quickInput.value = ''
+    return
+  }
   const info = parseQuickConnect(quickInput.value)
   if (!info) {
     toast(t('toolbar.parseError'), 'error')
