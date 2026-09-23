@@ -463,7 +463,7 @@ export default {
       agent: 'Agent',
     },
     password: 'Password',
-    passwordPlaceholder: 'Login password (stored in the OS credential manager on save; leave empty to keep current)',
+    passwordPlaceholder: 'Please enter your password',
     privateKeyFile: 'Private key',
     privateKeyPlaceholder: 'e.g. C:\\Users\\you\\.ssh\\id_ed25519',
     browserMockToast: 'File picker is unavailable in browser preview. Run tauri dev to use the system dialog.',

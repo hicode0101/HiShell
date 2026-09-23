@@ -40,6 +40,7 @@ const AUTH_METHODS = [
   { value: 'privateKey', labelKey: 'connect.auth.privateKey' },
   { value: 'userKey', labelKey: 'connect.auth.userKey' },
   { value: 'keyboardInteractive', labelKey: 'connect.auth.ki' },
+  { value: 'agent', labelKey: 'connect.auth.agent' },
 ] as const
 
 const authKind = ref<string>('password')
@@ -86,6 +87,8 @@ function submitAuth() {
     body.method = 'userKey'
     body.keyName = authKeyName.value
     body.passphrase = authPassphrase.value
+  } else if (authKind.value === 'agent') {
+    body.method = 'agent'
   }
   respond(body)
 }
@@ -111,8 +114,7 @@ watch(current, (v) => {
       authKind.value = 'userKey'
       authKeyName.value = p.userKeyName || authKeyNames.value[0] || ''
     } else if (pa === 'agent') {
-      // agent 不在对话框方式之列，退回密码
-      authKind.value = 'password'
+      authKind.value = 'agent'
     } else {
       // 兼容旧载荷：按失败方式推断
       authKind.value =
@@ -122,7 +124,9 @@ watch(current, (v) => {
             ? p.keyPath
               ? 'privateKey'
               : 'userKey'
-            : 'password'
+            : p.method === 'agent'
+              ? 'agent'
+              : 'password'
       authKeyPath.value = authKind.value === 'privateKey' ? p.keyPath || '' : ''
       if (authKind.value === 'userKey' && !authKeyName.value) authKeyName.value = authKeyNames.value[0] ?? ''
     }
@@ -181,7 +185,8 @@ function kiPrompts(o: Record<string, unknown> | undefined): { text: string; echo
 </script>
 
 <template>
-  <FDialog :open="open" :title="title" :width="520">
+  <!-- 认证重试比其他提示宽 100px（620），hostkey / keyboard-interactive 保持 520 -->
+  <FDialog :open="open" :title="title" :width="kind === 'authRetry' ? 620 : 520">
     <template v-if="current">
       <!-- 首次连接 hostkey -->
       <template v-if="kind === 'hostkeyNew'">
@@ -228,9 +233,13 @@ function kiPrompts(o: Record<string, unknown> | undefined): { text: string; echo
             <span class="pa-label">{{ t('connect.passphrase') }}</span>
             <FTextBox v-model="authPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" @keydown.enter="submitAuth" />
           </template>
+          <template v-else-if="authKind === 'keyboardInteractive'">
+            <span class="pa-label">{{ t('connect.hint') }}</span>
+            <div class="pa-hint">{{ t('connect.kiHint') }}</div>
+          </template>
           <template v-else>
-            <span class="pa-label" />
-            <div class="pa-hint">{{ t('prompt.kiHint') }}</div>
+            <span class="pa-label">{{ t('connect.hint') }}</span>
+            <div class="pa-hint">{{ t('connect.agentHint') }}</div>
           </template>
         </div>
       </template>
@@ -331,6 +340,11 @@ function kiPrompts(o: Record<string, unknown> | undefined): { text: string; echo
   gap: 10px 14px;
   font-size: 12.5px;
   align-items: center;
+  /* 高度在原基础上加 100px（3 行 110px → 210px）。
+     align-content 必须置 start：Grid 默认 stretch 会把加高的空间摊进每一行（行距变大），
+     置 start 后行高/行距不变，多余空间留在底部（与快速连接 .qc-body 的加高方式一致） */
+  align-content: start;
+  min-height: 210px;
   margin-top: 2px;
 }
 .pa-label {

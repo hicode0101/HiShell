@@ -466,7 +466,7 @@ export default {
       agent: 'Agent',
     },
     password: '密码',
-    passwordPlaceholder: '登录密码（保存后存入系统凭据管理器；编辑时留空保持不变）',
+    passwordPlaceholder: '请输入登录密码',
     privateKeyFile: '私钥文件',
     privateKeyPlaceholder: '如 C:\\Users\\you\\.ssh\\id_ed25519',
     browserMockToast: '浏览器预览模式无法选择文件，运行 tauri dev 后可用系统对话框',

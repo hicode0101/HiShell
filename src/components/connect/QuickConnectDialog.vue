@@ -55,6 +55,8 @@ const authOptions = computed(() => [
   { kind: 'password' as AuthKind, label: t('connect.auth.password') },
   { kind: 'publicKey' as AuthKind, label: t('connect.auth.privateKey') },
   { kind: 'userKey' as AuthKind, label: t('connect.auth.userKey') },
+  { kind: 'keyboardInteractive' as AuthKind, label: t('connect.auth.ki') },
+  { kind: 'agent' as AuthKind, label: t('connect.auth.agent') },
 ])
 const authLabel = computed({
   get: () => authOptions.value.find((o) => o.kind === authKind.value)?.label ?? '',
@@ -220,12 +222,20 @@ async function connectNow() {
         <span class="lbl">{{ t('connect.passphrase') }}</span>
         <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" />
       </template>
-      <template v-else>
+      <template v-else-if="authKind === 'userKey'">
         <span class="lbl">{{ t('connect.userKeyLabel') }}</span>
         <FComboBox v-if="userKeyNames.length" v-model="form.userKeyName" :options="userKeyNames" />
         <span v-else class="qc-hint">{{ t('connect.noUserKeys') }}</span>
         <span class="lbl">{{ t('connect.passphrase') }}</span>
         <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" />
+      </template>
+      <template v-else-if="authKind === 'keyboardInteractive'">
+        <span class="lbl">{{ t('connect.hint') }}</span>
+        <span class="qc-hint">{{ t('connect.kiHint') }}</span>
+      </template>
+      <template v-else>
+        <span class="lbl">{{ t('connect.hint') }}</span>
+        <span class="qc-hint">{{ t('connect.agentHint') }}</span>
       </template>
     </div>
       <p class="qc-note">{{ t('quickconnect.note') }}</p>
