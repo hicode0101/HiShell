@@ -121,12 +121,15 @@ watch(
   },
 )
 
-// 连接状态行（tauri 模式：终端内可见连接过程与失败原因）
+// 连接状态行（tauri 模式：终端内可见连接过程与失败原因）。
+// 全局仅一个 TerminalPane 实例，props.tab 随激活标签切换而整体换对象：
+// 必须同时监听 tab.id，id 变化说明是切换标签而非状态流转，跳过写入，
+// 否则上一个标签的旧状态会被当作本次变化，在其他终端里打出横幅。
 watch(
-  () => [props.tab.status, props.tab.statusMessage] as const,
-  ([status, message], [prevStatus]) => {
-    if (!isTauri || status === prevStatus) return
-    const entry = terminalEntry(props.tab.id)
+  () => [props.tab.id, props.tab.status, props.tab.statusMessage] as const,
+  ([tabId, status, message], [prevTabId, prevStatus]) => {
+    if (!isTauri || tabId !== prevTabId || status === prevStatus) return
+    const entry = terminalEntry(tabId)
     if (!entry) return
     if (status === 'connected') {
       if (props.tab.kind === 'local') return // 本地终端开箱即连，无需横幅
