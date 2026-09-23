@@ -212,6 +212,7 @@ export default {
     jump: 'Jump: {name}',
     proxyTooltip: 'Proxy mode: {mode}',
     localBadge: 'Local Terminal',
+    hasForwardsTip: 'Port forwarding rules configured, click to view',
   },
 
   statusbar: {

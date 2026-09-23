@@ -21,6 +21,13 @@ function tabCmd(cmdName: string) {
 
 const isSession = computed(() => props.tab.kind === 'session')
 
+/** 会话配置中存在端口转发规则 → 「端口」按钮高亮提示 */
+const forwardCount = computed(() => {
+  const p = props.tab.profileId ? profiles.byId(props.tab.profileId) : undefined
+  return p?.forwardedPorts?.length ?? 0
+})
+const hasForwards = computed(() => forwardCount.value > 0)
+
 const proxyBadge = computed(() => {
   const p = props.tab.profileId ? profiles.byId(props.tab.profileId) : undefined
   if (!p) return null
@@ -71,13 +78,19 @@ const proxyBadge = computed(() => {
 
       <div class="st-divider" />
 
-      <button class="st-btn" :title="t('ports.dialogTitle')" @click="cmd('ports-manager')">
+      <button
+        class="st-btn"
+        :class="{ 'has-forwards': hasForwards }"
+        :title="hasForwards ? t('sessionToolbar.hasForwardsTip') : t('ports.dialogTitle')"
+        @click="cmd('ports-manager')"
+      >
         <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
           <path d="M8 8.5V4M12 8.5V4" />
           <path d="M5.5 8.5h9v2.2a4.5 4.5 0 0 1-9 0V8.5z" />
           <path d="M10 15.2v1.6" />
         </svg>
         {{ t('ports.title') }}
+        <span v-if="hasForwards" class="fw-count">{{ forwardCount }}</span>
       </button>
       <button class="st-btn" :title="t('common.reconnect')" :disabled="tab.status === 'connected'" @click="cmd('reconnect')">
         <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
@@ -190,6 +203,29 @@ const proxyBadge = computed(() => {
 .st-btn:disabled {
   color: var(--text-disabled);
   cursor: default;
+}
+/* 配置了端口转发规则：端口按钮高亮，一眼可见 */
+.st-btn.has-forwards {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+}
+.st-btn.has-forwards:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+.fw-count {
+  background: var(--accent);
+  color: var(--accent-text-on);
+  border-radius: 9px;
+  font-size: 10.5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
 }
 .st-spacer {
   flex: 1;

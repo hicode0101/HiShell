@@ -214,6 +214,7 @@ export default {
     jump: '跳板: {name}',
     proxyTooltip: '代理连接方式：{mode}',
     localBadge: '本地终端',
+    hasForwardsTip: '已配置端口转发规则，点击查看',
   },
 
   statusbar: {
