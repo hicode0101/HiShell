@@ -9,11 +9,16 @@ const props = withDefaults(
     type?: 'text' | 'password'
     disabled?: boolean
     clearable?: boolean
+    /** 密码字段已存储凭据：眼睛图标后显示清除图标，点击触发 clear-stored */
+    storedClearable?: boolean
   }>(),
-  { placeholder: '', type: 'text', disabled: false, clearable: true },
+  { placeholder: '', type: 'text', disabled: false, clearable: true, storedClearable: false },
 )
 
-const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', v: string): void
+  (e: 'clear-stored'): void
+}>()
 
 const focused = ref(false)
 /** password 类型：是否以明文显示（false=圆点掩码） */
@@ -54,6 +59,20 @@ function onInput(e: Event) {
         <path d="M4.3 5.6C3 6.8 2.2 8.4 2.2 10c0 0 3 5.2 7.8 5.2 1.5 0 2.8-.5 3.9-1.2M8 5.1c.6-.2 1.3-.3 2-.3 4.8 0 7.8 5.2 7.8 5.2s-.8 1.6-2.1 2.9" />
         <path d="M8.4 8.4a2.3 2.3 0 0 0 3.2 3.2" />
         <path d="M3.5 3.5l13 13" />
+      </svg>
+    </button>
+    <!-- 已存储凭据的清除图标（扫把）：点击清除已保存的密码/口令 -->
+    <button
+      v-if="type === 'password' && storedClearable"
+      class="f-textbox-eye"
+      :title="t('ui.clearStored')"
+      tabindex="-1"
+      @click="emit('clearStored')"
+    >
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16.6 3.4l-5.8 5.8" />
+        <path d="M10.2 9.4c-1.5-.8-3.5-.6-4.8.7l-2 2 4.5 4.5 2-2c1.3-1.3 1.5-3.3.7-4.8z" />
+        <path d="M5.9 13.1l-2.4 2.4" />
       </svg>
     </button>
     <button

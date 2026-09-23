@@ -104,6 +104,12 @@ pub struct SecretsIn {
     /// 显式要求清除已存凭据
     #[serde(default)]
     pub clear: bool,
+    /// 仅清除已存密码（保留口令等其他凭据）
+    #[serde(default)]
+    pub clear_password: bool,
+    /// 仅清除已存私钥口令
+    #[serde(default, rename = "clearPassphrase")]
+    pub clear_passphrase: bool,
 }
 
 fn file_path() -> std::path::PathBuf {
@@ -182,8 +188,6 @@ pub fn by_id(id: &str) -> Option<Profile> {
 }
 
 pub fn upsert_with_secrets(mut profile: Profile, secrets_in: &SecretsIn) -> AppResult<Profile> {
-    // 既有 profile（用于保持已有凭据标记）
-    let existing = by_id(&profile.id);
     profile.password.clear();
     profile.private_key_passphrase.clear();
 
@@ -203,14 +207,20 @@ pub fn upsert_with_secrets(mut profile: Profile, secrets_in: &SecretsIn) -> AppR
     if let Some(p) = &secrets_in.proxy_password {
         bundle.proxy_password = Some(p.clone());
     }
+    // 按字段清除（优先级高于同请求中的赋值）
+    if secrets_in.clear_password {
+        bundle.password = None;
+    }
+    if secrets_in.clear_passphrase {
+        bundle.passphrase = None;
+    }
     if bundle.password.is_some() || bundle.passphrase.is_some() || bundle.proxy_password.is_some() {
         secrets::set(&profile.id, &bundle)?;
-        profile.has_stored_password = bundle.password.is_some();
-        profile.has_stored_passphrase = bundle.passphrase.is_some();
-    } else if existing.is_none() {
-        profile.has_stored_password = false;
-        profile.has_stored_passphrase = false;
+    } else {
+        secrets::delete(&profile.id);
     }
+    profile.has_stored_password = bundle.password.is_some();
+    profile.has_stored_passphrase = bundle.passphrase.is_some();
 
     let mut list = load();
     if let Some(slot) = list.iter_mut().find(|p| p.id == profile.id) {

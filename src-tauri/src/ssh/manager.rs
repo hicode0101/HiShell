@@ -1,5 +1,5 @@
-//! SSH 会话管理（russh 0.46）：连接、认证序列（agent → publickey → password → keyboard-interactive，
-//! 对齐 Tabby 顺序）、known_hosts 校验（前端确认弹窗）。
+//! SSH 会话管理（russh 0.46）：连接、认证（严格按用户配置的方式，无回退）、
+//! known_hosts 校验（前端确认弹窗）。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -50,11 +50,28 @@ pub enum PromptPayload {
         new_fingerprint: String,
         key_type: String,
     },
-    Password {
+    /// 统一认证对话框：密码/密钥验证失败后，允许用户重新输入或切换认证方式
+    #[serde(rename = "authRetry")]
+    AuthRetry {
         host: String,
         user: String,
-        #[serde(rename = "hasStored")]
-        has_stored: bool,
+        /// 当前失败的认证方式（对话框默认选中）：password / publicKey / keyboardInteractive
+        method: String,
+        /// 失败原因（对话框顶部红字）
+        error: String,
+        /// 配置中的私钥文件路径（可为空）
+        #[serde(rename = "keyPath")]
+        key_path: String,
+        /// 用户密钥管理中的可用密钥名
+        #[serde(rename = "userKeys")]
+        user_keys: Vec<String>,
+        /// 会话配置中的原始认证方式：password / privateKey / userKey / keyboardInteractive / agent
+        /// （对话框默认选中以此为准，而不是归一化后的 method）
+        #[serde(rename = "profileAuth")]
+        profile_auth: String,
+        /// userKey 配置引用的密钥名（可为空）
+        #[serde(rename = "userKeyName")]
+        user_key_name: String,
     },
     KeyboardInteractive {
         host: String,
@@ -274,7 +291,9 @@ fn load_private_key(path: &str, passphrase: Option<&str>) -> AppResult<key::KeyP
     keys::load_secret_key(&expanded, passphrase).map_err(|e| AppError::msg(format!("私钥加载失败: {e}")))
 }
 
-/// 认证序列（对齐 Tabby 顺序，显式指定的认证方式优先）
+/// 认证：严格按用户配置的认证方式执行，不做静默回退——
+/// 密码错误就报「密码认证被拒绝」，绝不落到 agent/publicKey 等未配置方式。
+/// 失败后弹统一认证对话框：用户可重输密码、换密钥或切换认证方式，直至成功或取消。
 async fn authenticate(
     handle: &mut Handle<SshHandler>,
     shared: &Arc<SessionShared>,
@@ -282,6 +301,8 @@ async fn authenticate(
     secrets_bundle: &secrets::ProfileSecrets,
 ) -> AppResult<()> {
     // userKey：按名称引用用户密钥管理中的密钥，解析为 ~/.ssh/<name> 的公钥认证
+    let profile_auth = profile.auth.clone();
+    let user_key_name = profile.user_key_name.clone();
     let mut profile = profile.clone();
     if profile.auth == "userKey" {
         profile.auth = "publicKey".into();
@@ -295,26 +316,35 @@ async fn authenticate(
             }
         }
     }
-    let mut order: Vec<&str> = Vec::new();
-    match profile.auth.as_str() {
-        "agent" => order.extend(["agent", "publicKey", "password", "keyboardInteractive"]),
-        "publicKey" => order.extend(["publicKey", "agent", "password", "keyboardInteractive"]),
-        "keyboardInteractive" => order.extend(["keyboardInteractive", "password", "publicKey", "agent"]),
-        "password" => order.extend(["password", "keyboardInteractive", "publicKey", "agent"]),
-        _ => order.extend(["agent", "publicKey", "password", "keyboardInteractive"]),
-    }
+    let mut method = match profile.auth.as_str() {
+        "agent" => "agent",
+        "publicKey" => "publicKey",
+        "keyboardInteractive" => "keyboardInteractive",
+        _ => "password",
+    };
+    let mut override_creds: Option<serde_json::Value> = None;
 
-    let mut last_err = String::from("无可用认证方式");
-    crate::logger::log(&format!("开始认证 user={} 方案顺序={:?}", shared.user, order));
-
-    for method in order {
+    loop {
         if shared.closed.load(Ordering::Relaxed) {
             return Err(AppError::Cancelled);
         }
+        let method_name = match method {
+            "agent" => "agent",
+            "publicKey" => "公钥",
+            "keyboardInteractive" => "键盘交互",
+            _ => "密码",
+        };
+        crate::logger::log(&format!(
+            "开始认证 user={} 方式={method}{}",
+            shared.user,
+            if override_creds.is_some() { "（用户重试）" } else { "（严格按配置）" }
+        ));
         let result: AppResult<bool> = match method {
             "agent" => auth_agent(handle, shared).await,
-            "publicKey" => auth_publickey(handle, shared, &profile, secrets_bundle).await,
-            "password" => auth_password(handle, shared, secrets_bundle).await,
+            "publicKey" => {
+                auth_publickey(handle, shared, &profile, secrets_bundle, override_creds.as_ref()).await
+            }
+            "password" => auth_password(handle, shared, secrets_bundle, override_creds.as_ref()).await,
             "keyboardInteractive" => auth_ki(handle, shared, secrets_bundle).await,
             _ => Ok(false),
         };
@@ -323,15 +353,47 @@ async fn authenticate(
                 crate::logger::log(&format!("认证成功 via {method}"));
                 return Ok(());
             }
-            Ok(false) => last_err = format!("{method} 认证被服务器拒绝"),
             Err(AppError::Cancelled) => return Err(AppError::Cancelled),
-            Err(e) => {
-                last_err = format!("{method}: {e}");
-                // 私钥不存在等硬错误：跳过该方法继续兜底
-            }
+            _ => {}
         }
+        let err_text = match &result {
+            Ok(false) => format!("{method_name}认证被服务器拒绝"),
+            Err(e) => format!("{method_name}认证出错: {e}"),
+            Ok(true) => unreachable!(),
+        };
+
+        // 弹统一认证对话框：重输密码 / 换密钥 / 切换认证方式
+        let user_keys: Vec<String> = crate::commands::userkeys::user_key_list()
+            .map(|list| list.into_iter().map(|k| k.name).collect())
+            .unwrap_or_default();
+        let answer = shared
+            .ask_frontend(
+                "auth-retry",
+                PromptPayload::AuthRetry {
+                    host: shared.host.clone(),
+                    user: shared.user.clone(),
+                    method: method.to_string(),
+                    error: err_text,
+                    key_path: profile.private_key_path.clone(),
+                    user_keys,
+                    profile_auth: profile_auth.clone(),
+                    user_key_name: user_key_name.clone(),
+                },
+                600,
+            )
+            .await?;
+        if answer.get("cancel").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return Err(AppError::Cancelled);
+        }
+        let m = answer.get("method").and_then(|v| v.as_str()).unwrap_or("password");
+        method = match m {
+            "userKey" | "publicKey" => "publicKey",
+            "keyboardInteractive" => "keyboardInteractive",
+            "agent" => "agent",
+            _ => "password",
+        };
+        override_creds = Some(answer);
     }
-    Err(AppError::msg(format!("认证失败：{last_err}")))
 }
 
 /// 平台相关的 ssh-agent 连接
@@ -384,84 +446,97 @@ where
     Ok(false)
 }
 
+/// 公钥认证：加载私钥（口令来自已存凭据或统一认证对话框的临时输入）并认证。
+/// 加载失败（含口令缺失/错误）与被服务器拒绝等一切失败，
+/// 都交回 authenticate() 的统一认证对话框处理，不再弹旧版密码框。
 async fn auth_publickey(
     handle: &mut Handle<SshHandler>,
     shared: &Arc<SessionShared>,
     profile: &Profile,
     secrets_bundle: &secrets::ProfileSecrets,
+    creds: Option<&serde_json::Value>,
 ) -> AppResult<bool> {
-    if profile.private_key_path.trim().is_empty() {
-        return Ok(false);
-    }
-    let path = expand_tilde(&profile.private_key_path);
-    let mut passphrase = secrets_bundle.passphrase.clone();
-    let key = loop {
-        match keys::load_secret_key(&path, passphrase.as_deref()) {
-            Ok(k) => break k,
-            Err(e) => {
-                let msg = e.to_string();
-                let encrypted = msg.contains("encrypt") || msg.contains("decrypt") || msg.contains("passphrase");
-                if !encrypted {
-                    return Err(AppError::msg(format!("私钥加载失败: {e}")));
-                }
-                // 弹窗索要口令（可记住）
-                let answer = shared
-                    .ask_frontend(
-                        "passphrase",
-                        PromptPayload::Password { host: shared.host.clone(), user: shared.user.clone(), has_stored: false },
-                        300,
-                    )
-                    .await?;
-                let pwd = answer.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let save = answer.get("remember").and_then(|v| v.as_bool()).unwrap_or(false);
-                if pwd.is_empty() {
-                    return Err(AppError::Cancelled);
-                }
-                if save {
-                    let mut bundle = secrets::get(&profile.id).unwrap_or_default();
-                    bundle.passphrase = Some(pwd.clone());
-                    secrets::set(&profile.id, &bundle);
-                }
-                passphrase = Some(pwd);
+    // 统一认证对话框重试：可换密钥（用户密钥名 → ~/.ssh/<name>，或直接指定配置中的文件路径）
+    let mut profile = profile.clone();
+    let mut pass_override: Option<String> = None;
+    if let Some(v) = creds {
+        let key_path = v.get("keyPath").and_then(|x| x.as_str()).unwrap_or("");
+        let key_name = v.get("keyName").and_then(|x| x.as_str()).unwrap_or("");
+        if !key_path.is_empty() {
+            profile.private_key_path = key_path.to_string();
+        } else if !key_name.is_empty() {
+            if let Some(home) = dirs::home_dir() {
+                profile.private_key_path = home.join(".ssh").join(key_name).to_string_lossy().to_string();
             }
         }
-    };
-    let result = handle.authenticate_publickey(&shared.user.clone(), Arc::new(key)).await?;
-    Ok(result)
+        let pp = v.get("passphrase").and_then(|x| x.as_str()).unwrap_or("");
+        if !pp.is_empty() {
+            pass_override = Some(pp.to_string());
+        }
+    }
+    if profile.private_key_path.trim().is_empty() {
+        return Err(AppError::msg("未配置私钥文件"));
+    }
+    let path = expand_tilde(&profile.private_key_path);
+
+    // 口令尝试顺序（OpenSSH 同款策略）：对话框口令优先，其次已存凭据，最后总是兜底
+    // 尝试「无口令」——密钥换成无口令密钥后，配置里残留的旧口令不应导致加载失败。
+    let candidate = pass_override
+        .or_else(|| secrets_bundle.passphrase.clone())
+        .filter(|s| !s.is_empty());
+    let mut attempts: Vec<Option<String>> = Vec::new();
+    if let Some(pp) = &candidate {
+        attempts.push(Some(pp.clone()));
+    }
+    attempts.push(None);
+
+    let mut last_err = AppError::msg("私钥加载失败");
+    for pp in attempts {
+        match keys::load_secret_key(&path, pp.as_deref()) {
+            Ok(key) => {
+                let result = handle.authenticate_publickey(&shared.user.clone(), Arc::new(key)).await?;
+                return Ok(result);
+            }
+            Err(e) => {
+                last_err = AppError::msg(format!("私钥加载失败: {e}"));
+            }
+        }
+    }
+    Err(last_err)
 }
 
+/// 密码认证：优先统一认证对话框带来的临时密码（勾选记住才落盘），
+/// 其次已存凭据。无任何凭据时返回错误，由 authenticate() 弹统一对话框让用户输入。
 async fn auth_password(
     handle: &mut Handle<SshHandler>,
     shared: &Arc<SessionShared>,
     secrets_bundle: &secrets::ProfileSecrets,
+    creds: Option<&serde_json::Value>,
 ) -> AppResult<bool> {
-    let mut password = secrets_bundle.password.clone().or_else(|| shared.password.lock().unwrap().clone());
-    if password.is_none() {
-        let answer = shared
-            .ask_frontend(
-                "password",
-                PromptPayload::Password { host: shared.host.clone(), user: shared.user.clone(), has_stored: false },
-                300,
-            )
-            .await?;
-        let pwd = answer.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        if pwd.is_empty() {
-            return Err(AppError::Cancelled);
-        }
-        let save = answer.get("remember").and_then(|v| v.as_bool()).unwrap_or(false);
-        if save {
-            // 记住密码：真正写入系统凭据管理器（keyring），下次连接免输入
-            let mut bundle = secrets::get(&shared.profile_id).unwrap_or_default();
-            bundle.password = Some(pwd.clone());
-            let _ = secrets::set(&shared.profile_id, &bundle);
-            let _ = crate::profile_store::mark_stored_password(&shared.profile_id);
-            crate::logger::log(&format!("profile={} 记住密码已存入凭据管理器", shared.profile_id));
-        }
-        *shared.password.lock().unwrap() = Some(pwd.clone());
-        password = Some(pwd);
-    }
+    let from_dialog = creds.and_then(|v| {
+        v.get("password")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|p| {
+                if v.get("rememberPassword").and_then(|x| x.as_bool()).unwrap_or(false) {
+                    let mut bundle = secrets::get(&shared.profile_id).unwrap_or_default();
+                    bundle.password = Some(p.to_string());
+                    let _ = secrets::set(&shared.profile_id, &bundle);
+                    let _ = crate::profile_store::mark_stored_password(&shared.profile_id);
+                    crate::logger::log(&format!("profile={} 记住密码已更新", shared.profile_id));
+                }
+                *shared.password.lock().unwrap() = Some(p.to_string());
+                p.to_string()
+            })
+    });
+    let pwd = from_dialog
+        .or_else(|| secrets_bundle.password.clone())
+        .or_else(|| shared.password.lock().unwrap().clone());
+    let Some(pwd) = pwd else {
+        return Err(AppError::msg("未配置密码"));
+    };
     handle
-        .authenticate_password(&shared.user.clone(), password.unwrap())
+        .authenticate_password(&shared.user.clone(), pwd)
         .await
         .map_err(|e| AppError::msg(format!("密码认证错误: {e}")))
 }

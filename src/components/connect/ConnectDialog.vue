@@ -65,6 +65,14 @@ function coerceNumbers() {
   form.connectTimeout = Number(form.connectTimeout)
 }
 
+// 切换密钥时清空口令输入（口令随密钥走，避免旧口令误导）
+watch(
+  () => [form.userKeyName, form.privateKeyPath],
+  () => {
+    form.privateKeyPassphrase = ''
+  },
+)
+
 watch(open, (v) => {
   if (!v) return
   const editId = sessions.connectDialogProfileId
@@ -162,6 +170,11 @@ function buildProxy(): ProxyConfig {
 }
 
 function fillFormForEdit() {
+  // 已存储凭据标志 → 决定密码/口令字段是否显示“清除已存”扫把图标
+  storedPassword.value = !!profilesStore.byId(sessions.connectDialogProfileId)?.hasStoredPassword
+  storedPassphrase.value = !!profilesStore.byId(sessions.connectDialogProfileId)?.hasStoredPassphrase
+  clearPasswordIntent.value = false
+  clearPassphraseIntent.value = false
   const p = form.proxy
   if (p.kind === 'socks5') {
     proxyKind.value = 'socks5'
@@ -229,9 +242,34 @@ async function testConnection() {
   }
 }
 
-/** 表单中已输入的明文凭据 → 传给后端存入系统凭据管理器（留空 = 保持已存值不变） */
+/** 已存储凭据标志（编辑已有配置时由 hasStoredPassword/hasStoredPassphrase 驱动清除图标） */
+const storedPassword = ref(false)
+const storedPassphrase = ref(false)
+/** 用户点击扫把图标后，保存时显式清除对应已存凭据 */
+const clearPasswordIntent = ref(false)
+const clearPassphraseIntent = ref(false)
+
+function clearStored(kind: 'password' | 'passphrase') {
+  if (kind === 'password') {
+    clearPasswordIntent.value = true
+    form.password = ''
+  } else {
+    clearPassphraseIntent.value = true
+    form.privateKeyPassphrase = ''
+  }
+}
+
+/** 表单中已输入的明文凭据 → 传给后端存入系统凭据管理器（留空 = 保持已存值不变；
+ *  点击过扫把图标的字段 = 显式清除已存值） */
 function secretsFromForm() {
-  const secrets: { password?: string; passphrase?: string } = {}
+  const secrets: {
+    password?: string
+    passphrase?: string
+    clearPassword?: boolean
+    clearPassphrase?: boolean
+  } = {}
+  if (clearPasswordIntent.value) secrets.clearPassword = true
+  if (clearPassphraseIntent.value) secrets.clearPassphrase = true
   if (form.password) secrets.password = form.password
   if (form.privateKeyPassphrase) secrets.passphrase = form.privateKeyPassphrase
   return Object.keys(secrets).length ? secrets : undefined
@@ -247,7 +285,11 @@ async function saveProfile() {
   }
   coerceNumbers()
   if (!form.name) form.name = form.host
-  await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
+  const saved = await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
+  storedPassword.value = !!saved.hasStoredPassword
+  storedPassphrase.value = !!saved.hasStoredPassphrase
+  clearPasswordIntent.value = false
+  clearPassphraseIntent.value = false
   toast(t('connect.savedToast', { name: form.name }), 'success')
   open.value = false
 }
@@ -295,6 +337,8 @@ async function connectNow() {
           v-model="form.password"
           type="password"
           :placeholder="form.hasStoredPassword ? t('prompt.savedHint') : t('connect.passwordPlaceholder')"
+          :stored-clearable="storedPassword"
+          @clear-stored="clearStored('password')"
         />
       </template>
       <template v-else-if="authKind === 'publicKey'">
@@ -304,14 +348,26 @@ async function connectNow() {
           <FButton @click="pickPrivateKey">{{ t('common.browse') }}</FButton>
         </div>
         <span class="cd-label">{{ t('connect.passphrase') }}</span>
-        <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" />
+        <FTextBox
+          v-model="form.privateKeyPassphrase"
+          type="password"
+          :placeholder="t('connect.passphrasePlaceholder')"
+          :stored-clearable="storedPassphrase"
+          @clear-stored="clearStored('passphrase')"
+        />
       </template>
       <template v-else-if="authKind === 'userKey'">
         <span class="cd-label">{{ t('connect.userKeyLabel') }}</span>
         <FComboBox v-if="userKeyNames.length" v-model="form.userKeyName" :options="userKeyNames" />
         <span v-else class="cd-hint">{{ t('connect.noUserKeys') }}</span>
         <span class="cd-label">{{ t('connect.passphrase') }}</span>
-        <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" />
+        <FTextBox
+          v-model="form.privateKeyPassphrase"
+          type="password"
+          :placeholder="t('connect.passphrasePlaceholder')"
+          :stored-clearable="storedPassphrase"
+          @clear-stored="clearStored('passphrase')"
+        />
       </template>
       <template v-else-if="authKind === 'keyboardInteractive'">
         <span class="cd-label">{{ t('connect.hint') }}</span>

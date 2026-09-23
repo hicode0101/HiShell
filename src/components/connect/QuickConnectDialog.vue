@@ -98,6 +98,13 @@ watch(
 watch(authKind, (k) => {
   if (k === 'userKey') void loadUserKeys()
 })
+// 切换密钥时清空口令输入（口令随密钥走，避免旧口令误导）
+watch(
+  () => [form.userKeyName, form.privateKeyPath],
+  () => {
+    form.privateKeyPassphrase = ''
+  },
+)
 
 async function pickPrivateKey() {
   if (!isTauri) {

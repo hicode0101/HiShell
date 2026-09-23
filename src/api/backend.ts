@@ -144,6 +144,10 @@ export interface ProfileSecretsIn {
   passphrase?: string
   proxyPassword?: string
   clear?: boolean
+  /** 仅清除已存密码 */
+  clearPassword?: boolean
+  /** 仅清除已存私钥口令 */
+  clearPassphrase?: boolean
 }
 
 export async function profileList(): Promise<SshProfile[]> {
