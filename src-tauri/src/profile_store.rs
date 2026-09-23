@@ -141,22 +141,26 @@ fn base_profile() -> Profile {
     }
 }
 
+/// 首次启动写入的示例配置：全部为无害占位地址（不含任何真实服务器信息），
+/// 仅在 profiles.json 缺失/损坏时生成一次，之后完全由用户数据接管
 fn seed() -> Vec<Profile> {
     let mut p1 = base_profile();
-    p1.id = "profile-yt-10808".into();
-    p1.name = "yt - 10808".into();
-    p1.host = "149.104.22.80".into();
+    p1.id = "profile-example-1".into();
+    p1.name = "示例：云服务器".into();
+    p1.host = "example.com".into();
+    p1.username = "root".into();
 
     let mut p2 = base_profile();
-    p2.id = "profile-hicode".into();
-    p2.name = "top.hicode.top".into();
-    p2.host = "top.hicode.top".into();
+    p2.id = "profile-example-2".into();
+    p2.name = "示例：内网主机".into();
+    p2.host = "192.168.1.100".into();
+    p2.username = "root".into();
 
     let mut p3 = base_profile();
-    p3.id = "profile-jump-demo".into();
-    p3.name = "内网机器（经 SOCKS5 代理）".into();
-    p3.host = "10.0.0.128".into();
-    p3.username = "admin".into();
+    p3.id = "profile-example-3".into();
+    p3.name = "示例：经 SOCKS5 代理访问内网".into();
+    p3.host = "10.0.0.100".into();
+    p3.username = "root".into();
     p3.auth = "publicKey".into();
     p3.proxy = ProxyConfig::Socks5 {
         host: "127.0.0.1".into(),

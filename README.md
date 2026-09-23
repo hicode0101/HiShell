@@ -95,13 +95,13 @@
 |---|---|---|
 | Windows x64 | ✅ 主要目标 | Mica/Acrylic 窗口材质、ConPTY、命名管道 ssh-agent |
 | Linux x64 | ✅ | XDG 配置目录、SSH_AUTH_SOCK、secret-service 凭据 |
-| macOS Intel / Apple Silicon | ✅ | 通用二进制（lto 优化）、Keychain 凭据 |
+| macOS Intel / Apple Silicon | ✅ | arm64 / x86_64 分别构建（Intel 版在 arm64 runner 上交叉编译）、Keychain 凭据 |
 
 ## 🚀 快速开始
 
 ```bash
-git clone https://github.com/hicode0101/HiTools.git
-cd HiTools/HiShell
+git clone https://github.com/hicode0101/HiShell.git
+cd HiShell
 npm install
 ```
 
@@ -158,7 +158,7 @@ git push origin v0.2.0
 流程（`.github/workflows/release.yml`）：
 
 1. 以 **tag 版本为准**，构建前自动同步版本号到 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`（`scripts/sync-version.mjs`）
-2. 四平台矩阵构建：Windows x64（NSIS+MSI）/ Linux x64（AppImage+deb）/ macOS Apple Silicon（arm64）/ macOS Intel（x86_64）
+2. 四平台矩阵构建：Windows x64（NSIS+MSI 安装包 + **portable zip 绿色版**，解压即用）/ Linux x64（AppImage+deb）/ macOS Apple Silicon（arm64）/ macOS Intel（x86_64）
 3. 自动创建 GitHub Release（`HiShell v{tag}`）并上传全部安装包
 
 也支持在 Actions 页面手动触发（workflow_dispatch，输入版本号）。

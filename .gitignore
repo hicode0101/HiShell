@@ -3,3 +3,7 @@ dist
 src-tauri/target
 *.local
 .DS_Store
+
+src-tauri/icons/ios
+src-tauri/icons/android
+
