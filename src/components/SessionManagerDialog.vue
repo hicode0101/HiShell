@@ -3,7 +3,7 @@
  * 会话管理器：列出全部连接配置，支持 连接 / 编辑 / 删除 / 新建。
  * 删除通过确认对话框二次确认，避免误删。
  */
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { FButton, FConfirmDialog, FDialog, toast } from '../ui'
 import { useProfilesStore } from '../stores/profiles'
 import { profileCopy } from '../api/backend'
@@ -17,6 +17,52 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 const profiles = useProfilesStore()
 const sessions = useSessionsStore()
 const deleteTarget = ref<SshProfile | null>(null)
+
+/* ---------- 行拖拽排序（行首把手，鼠标模拟；顺序经 profile_reorder 持久化） ---------- */
+const listEl = ref<HTMLElement>()
+const gripDragging = ref(false)
+const gripIndex = ref(-1)
+let gripMoved = false
+
+function onGripMouseDown(e: MouseEvent, index: number) {
+  if (e.button !== 0) return
+  e.preventDefault()
+  gripIndex.value = index
+  gripDragging.value = true
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onGripMove)
+  document.addEventListener('mouseup', onGripUp)
+}
+
+function onGripMove(e: MouseEvent) {
+  if (gripIndex.value < 0 || !listEl.value) return
+  const rowEls = [...listEl.value.querySelectorAll('.sm-row')]
+  const hover = rowEls.findIndex((r) => {
+    const b = r.getBoundingClientRect()
+    return e.clientY >= b.top && e.clientY <= b.bottom
+  })
+  if (hover < 0 || hover === gripIndex.value) return
+  profiles.moveRow(gripIndex.value, hover)
+  gripIndex.value = hover
+  gripMoved = true
+}
+
+async function onGripUp() {
+  document.removeEventListener('mousemove', onGripMove)
+  document.removeEventListener('mouseup', onGripUp)
+  document.body.style.userSelect = ''
+  gripDragging.value = false
+  if (gripMoved) await profiles.persistOrder()
+  gripIndex.value = -1
+  gripMoved = false
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onGripMove)
+  document.removeEventListener('mouseup', onGripUp)
+  document.body.style.userSelect = ''
+})
+
 
 const rows = computed(() =>
   profiles.profiles.map((p) => ({
@@ -78,8 +124,20 @@ async function confirmRemove() {
 <template>
   <FDialog :open="open" :title="t('sessions.title')" :width="620" @update:open="emit('update:open', $event)">
     <div v-if="!rows.length" class="sm-empty">{{ t('sessions.empty') }}</div>
-    <div v-else class="sm-list">
-      <div v-for="row in rows" :key="row.profile.id" class="sm-row">
+    <div v-else ref="listEl" class="sm-list" :class="{ 'grip-dragging': gripDragging }">
+      <div
+        v-for="(row, idx) in rows"
+        :key="row.profile.id"
+        class="sm-row"
+        :class="{ 'dragging-row': gripDragging && gripIndex === idx }"
+      >
+        <span class="sm-grip" :title="t('sessions.dragSort')" @mousedown="onGripMouseDown($event, idx)">
+          <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+            <circle cx="2.6" cy="3" r="1.4" /><circle cx="7.4" cy="3" r="1.4" />
+            <circle cx="2.6" cy="8" r="1.4" /><circle cx="7.4" cy="8" r="1.4" />
+            <circle cx="2.6" cy="13" r="1.4" /><circle cx="7.4" cy="13" r="1.4" />
+          </svg>
+        </span>
         <div class="sm-main">
           <div class="sm-name">
             {{ row.profile.name }}
@@ -144,6 +202,31 @@ async function confirmRemove() {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+.sm-list.grip-dragging {
+  cursor: grabbing;
+}
+.sm-row.dragging-row {
+  background: var(--bg-selected);
+}
+/* 行首拖拽把手（六点 grip） */
+.sm-grip {
+  flex: none;
+  width: 16px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  cursor: grab;
+  border-radius: 4px;
+}
+.sm-grip:hover {
+  color: var(--text-secondary);
+  background: var(--bg-alt-hover);
+}
+.sm-grip:active {
+  cursor: grabbing;
 }
 .sm-row {
   display: flex;

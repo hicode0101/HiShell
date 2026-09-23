@@ -161,6 +161,11 @@ export async function profileSave(profile: SshProfile, secrets?: ProfileSecretsI
   return profile
 }
 
+/** 按给定 id 顺序重排连接配置 */
+export async function profileReorder(ids: string[]): Promise<void> {
+  if (isTauri) return tauriInvoke<void>('profile_reorder', { ids })
+}
+
 export async function profileDelete(id: string): Promise<void> {
   if (isTauri) return tauriInvoke<void>('profile_delete', { id })
   mockProfileStore.remove(id)

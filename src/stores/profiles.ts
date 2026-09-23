@@ -1,7 +1,7 @@
 /** 连接配置（Profile）管理：Tauri 环境走后端 ProfileStore（凭据进 keyring），浏览器走 mock */
 import { defineStore } from 'pinia'
 import { isTauri } from '../api/adapter'
-import { profileDelete as apiProfileDelete, profileList, profileSave, type ProfileSecretsIn } from '../api/backend'
+import { profileDelete as apiProfileDelete, profileList, profileReorder, profileSave, type ProfileSecretsIn } from '../api/backend'
 import { mockProfileStore } from '../api/mock'
 import { defaultProfile, type ProxyConfig, type SshProfile } from '../api/types'
 
@@ -62,6 +62,16 @@ export const useProfilesStore = defineStore('profiles', {
       if (isTauri) await apiProfileDelete(id).catch(() => {})
       mockProfileStore.remove(id)
       this.profiles = this.profiles.filter((p) => p.id !== id)
+    },
+    /** 会话管理器拖拽排序：本地立即交换，拖完由 persistOrder 持久化 */
+    moveRow(from: number, to: number) {
+      if (from === to || to < 0 || from < 0 || to >= this.profiles.length || from >= this.profiles.length) return
+      const [it] = this.profiles.splice(from, 1)
+      this.profiles.splice(to, 0, it)
+    },
+    async persistOrder() {
+      if (!isTauri) return
+      await profileReorder(this.profiles.map((p) => p.id)).catch((e) => console.warn('排序保存失败', e))
     },
   },
 })

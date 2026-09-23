@@ -36,6 +36,12 @@ pub fn profile_delete(id: String) -> Result<(), String> {
     profile_store::delete(&id).map_err(|e| e.to_string())
 }
 
+/// 按给定 id 顺序重排连接配置（会话管理器拖拽排序）
+#[tauri::command]
+pub fn profile_reorder(ids: Vec<String>) -> Result<(), String> {
+    profile_store::reorder(&ids).map_err(|e| e.to_string())
+}
+
 /// 复制连接配置：新 id + 指定名称（重名自动递增），并同步复制系统凭据（密码/口令/代理密码）
 #[tauri::command]
 pub fn profile_copy(source_id: String, new_name: String) -> Result<Profile, String> {

@@ -98,6 +98,7 @@ export default {
   sessions: {
     title: 'Session Manager',
     empty: 'No connection profiles yet — click "New Connection" to create one',
+    dragSort: 'Drag to reorder',
     deletedToast: 'Profile "{name}" deleted',
     confirmDelete: 'Delete connection "{name}"? This cannot be undone.',
     copy: 'Duplicate',

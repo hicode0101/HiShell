@@ -239,6 +239,19 @@ pub fn delete(id: &str) -> AppResult<()> {
     save(&list)
 }
 
+/// 按给定 id 顺序重排配置（未列出的配置按原顺序追加在后），顺序持久化
+pub fn reorder(ids: &[String]) -> AppResult<()> {
+    let mut list = load();
+    let mut ordered: Vec<Profile> = Vec::with_capacity(list.len());
+    for id in ids {
+        if let Some(pos) = list.iter().position(|p| &p.id == id) {
+            ordered.push(list.remove(pos));
+        }
+    }
+    ordered.extend(list);
+    save(&ordered)
+}
+
 /// 认证流程"记住密码"写入凭据管理器后，同步 hasStoredPassword 标记
 pub fn mark_stored_password(id: &str) -> AppResult<()> {
     let mut list = load();

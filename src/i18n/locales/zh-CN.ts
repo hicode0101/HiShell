@@ -98,6 +98,7 @@ export default {
   sessions: {
     title: '会话管理器',
     empty: '还没有连接配置 — 点击「新建连接」创建',
+    dragSort: '拖动调整顺序',
     deletedToast: '已删除连接「{name}」',
     confirmDelete: '确定要删除连接「{name}」吗？该操作不可恢复。',
     copy: '复制配置',
