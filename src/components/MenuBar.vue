@@ -30,7 +30,8 @@ const menus = computed<MenuDef[]>(() => [
       { label: t('menus.newSerial'), command: 'new-serial' },
       { label: t('menus.newTelnet'), command: 'new-telnet' },
       { separator: true },
-      { label: t('menus.importSessions'), command: 'import-sessions' },
+      // 导入会话（Xshell / Tabby）入口暂时隐藏，功能保留，需要时恢复下行即可
+      // { label: t('menus.importSessions'), command: 'import-sessions' },
       { label: t('menus.openConfigDir'), command: 'open-config-dir' },
       { separator: true },
       { label: t('menus.exit'), command: 'exit' },

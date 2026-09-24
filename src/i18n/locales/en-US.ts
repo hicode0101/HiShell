@@ -104,6 +104,13 @@ export default {
     copy: 'Duplicate',
     copySuffix: '-copy',
     copiedToast: 'Duplicated as "{name}"',
+    importBtn: 'Import',
+    exportBtn: 'Export',
+    totalPrefix: '',
+    totalSuffix: 'profile(s)',
+    importedToast: 'Import finished: {imported} added, {skipped} skipped (duplicates)',
+    exportedToast: 'Exported {n} profile(s)',
+    nothingToExport: 'No connection profiles to export',
   },
 
   userKeys: {

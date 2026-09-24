@@ -104,6 +104,13 @@ export default {
     copy: '复制配置',
     copySuffix: '-副本',
     copiedToast: '已复制为「{name}」',
+    importBtn: '导入',
+    exportBtn: '导出',
+    totalPrefix: '共',
+    totalSuffix: '个配置',
+    importedToast: '导入完成：新增 {imported} 个，跳过 {skipped} 个（重复）',
+    exportedToast: '已导出 {n} 个配置',
+    nothingToExport: '没有可导出的连接配置',
   },
 
   userKeys: {

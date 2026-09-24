@@ -61,7 +61,10 @@ watch(
   <Teleport to="body">
     <div v-if="open" ref="overlayEl" class="f-dialog-overlay">
       <div ref="panelEl" class="f-dialog" :style="{ width: width + 'px' }" role="dialog" aria-modal="true" tabindex="-1">
-        <div class="f-dialog-title">{{ title }}</div>
+        <div class="f-dialog-title">
+          <span>{{ title }}</span>
+          <slot name="title-extra" />
+        </div>
         <div class="f-dialog-body">
           <slot />
         </div>
@@ -100,6 +103,9 @@ watch(
   outline: none;
 }
 .f-dialog-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   font-size: 18px;
   font-weight: 600;
   padding: 18px 24px 8px;

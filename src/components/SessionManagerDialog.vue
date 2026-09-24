@@ -6,7 +6,7 @@
 import { computed, onUnmounted, ref } from 'vue'
 import { FButton, FConfirmDialog, FDialog, toast } from '../ui'
 import { useProfilesStore } from '../stores/profiles'
-import { profileCopy } from '../api/backend'
+import { profileCopy, profileExport, profileImport } from '../api/backend'
 import { useSessionsStore } from '../stores/sessions'
 import type { SshProfile } from '../api/types'
 import { t } from '../i18n'
@@ -120,10 +120,62 @@ async function confirmRemove() {
   toast(t('sessions.deletedToast', { name: p.name }), 'success')
   deleteTarget.value = null
 }
+
+/* ---------- 会话配置导出 / 导入 ---------- */
+
+const JSON_FILTER = [{ name: 'HiShell Sessions', extensions: ['json'] }]
+
+/** 导出全部连接配置：另存为对话框选路径，后端写 JSON（凭据不随文件导出） */
+async function exportProfiles() {
+  if (!rows.value.length) {
+    toast(t('sessions.nothingToExport'), 'info')
+    return
+  }
+  try {
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const date = new Date().toISOString().slice(0, 10)
+    const path = await save({
+      title: t('sessions.exportBtn'),
+      defaultPath: `HiShell-sessions-${date}.json`,
+      filters: JSON_FILTER,
+    })
+    if (!path) return
+    const r = await profileExport(path)
+    toast(t('sessions.exportedToast', { n: r.exported }), 'success')
+  } catch (e) {
+    toast(String(e), 'error')
+  }
+}
+
+/** 导入连接配置：打开对话框选 JSON 文件，后端去重合并后刷新列表 */
+async function importProfiles() {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const path = await open({
+      multiple: false,
+      title: t('sessions.importBtn'),
+      filters: JSON_FILTER,
+    })
+    if (typeof path !== 'string' || !path) return
+    const r = await profileImport(path)
+    // 后端已落库，重载配置列表
+    profiles.$patch({ loaded: false })
+    await profiles.init()
+    toast(
+      t('sessions.importedToast', { imported: r.imported, skipped: r.skipped }),
+      r.imported > 0 ? 'success' : 'info',
+    )
+  } catch (e) {
+    toast(String(e), 'error')
+  }
+}
 </script>
 
 <template>
   <FDialog :open="open" :title="t('sessions.title')" :width="620" @update:open="emit('update:open', $event)">
+    <template #title-extra>
+      <div class="sm-count">{{ t('sessions.totalPrefix') }}<span class="sm-count-num">{{ rows.length }}</span>{{ t('sessions.totalSuffix') }}</div>
+    </template>
     <div v-if="!rows.length" class="sm-empty">{{ t('sessions.empty') }}</div>
     <div v-else ref="listEl" class="sm-list" :class="{ 'grip-dragging': gripDragging }">
       <div
@@ -172,8 +224,12 @@ async function confirmRemove() {
       </div>
     </div>
     <template #footer>
-      <FButton @click="sessions.openConnectDialog()">
+      <FButton icon="plus" @click="sessions.openConnectDialog()">
         {{ t('common.newConnection') }}
+      </FButton>
+      <FButton icon="upload" @click="importProfiles">{{ t('sessions.importBtn') }}</FButton>
+      <FButton icon="download" :disabled="!rows.length" @click="exportProfiles">
+        {{ t('sessions.exportBtn') }}
       </FButton>
       <div class="sm-spacer" />
       <FButton variant="subtle" @click="emit('update:open', false)">{{ t('common.close') }}</FButton>
@@ -308,5 +364,18 @@ async function confirmRemove() {
 }
 .sm-spacer {
   flex: 1;
+}
+.sm-count {
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.sm-count-num {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 3px;
+  font-family: 'Cascadia Mono', Consolas, monospace;
 }
 </style>

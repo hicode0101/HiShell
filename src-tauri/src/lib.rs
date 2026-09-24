@@ -37,6 +37,8 @@ pub fn run() {
             commands::profiles::profile_copy,
             commands::profiles::profile_delete,
             commands::profiles::profile_reorder,
+            commands::profiles::profile_export,
+            commands::profiles::profile_import,
             commands::ssh::ssh_connect,
             commands::ssh::ssh_prompt_response,
             commands::ssh::ssh_write,

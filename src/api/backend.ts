@@ -176,6 +176,30 @@ export async function profileCopy(sourceId: string, newName: string): Promise<Ss
   return tauriInvoke<SshProfile>('profile_copy', { sourceId, newName })
 }
 
+/* ==================== 会话配置导出 / 导入 ==================== */
+
+export interface ProfileExportResult {
+  exported: number
+  path: string
+}
+
+export interface ProfileImportResult {
+  imported: number
+  skipped: number
+}
+
+/** 导出全部连接配置为 JSON 文件（密码等凭据不随文件迁移） */
+export async function profileExport(path: string): Promise<ProfileExportResult> {
+  if (isTauri) return tauriInvoke<ProfileExportResult>('profile_export', { path })
+  return { exported: 0, path }
+}
+
+/** 从 JSON 文件导入连接配置（按 id 与 host+port+username 去重） */
+export async function profileImport(path: string): Promise<ProfileImportResult> {
+  if (isTauri) return tauriInvoke<ProfileImportResult>('profile_import', { path })
+  return { imported: 0, skipped: 0 }
+}
+
 /* ==================== SSH 会话 ==================== */
 
 export async function sshConnect(profileId: string): Promise<number> {
