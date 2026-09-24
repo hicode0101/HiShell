@@ -25,7 +25,7 @@ let unlistenLocal: (() => void) | null = null
  * 终端状态横幅：必须用 \r\n 换行——xterm 的裸 LF 只下移不回列，
  * 会导致横幅和紧随其后的服务器输出从光标所在列开始（缩进错位）。
  */
-function writeStatusLine(entry: ReturnType<typeof terminalEntry>, color: '90' | '91' | '92', text: string) {
+function writeStatusLine(entry: ReturnType<typeof terminalEntry>, color: '91' | '92', text: string) {
   entry?.term.write(`\r\n\x1b[${color}m[HiShell] ${text}\x1b[0m\r\n\r\n`)
 }
 
@@ -106,10 +106,8 @@ onMounted(() => {
   if (!containerRef.value) return
   container = containerRef.value
   attachTerminal(props.tab, container)
-  // 挂载时已在连接中：给出可见反馈（避免黑屏静默）
-  if (isTauri && props.tab.status === 'connecting') {
-    writeStatusLine(terminalEntry(props.tab.id), '90', t('terminal.connecting', { addr: props.tab.address }) + '...')
-  }
+  // 「正在连接」横幅由 sessions store 在发起连接前写入（含未 open 时缓冲的写入），
+  // 这里不再重复打印——此前只在本钩子打印，导致第二个及之后的标签看不到该提示
 })
 // 尺寸变化同步到后端 PTY（SSH 会话或本地终端）
 watch(

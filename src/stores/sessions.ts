@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia'
 import { isTauri } from '../api/adapter'
 import { localStart, localStop, sshConnect, sshDisconnect, sshDuplicateChannel } from '../api/backend'
+import { writeConnectingBanner } from '../components/terminal/terminalRegistry'
 import type { SessionTab, SshProfile, ViewMode } from '../api/types'
 import { t } from '../i18n'
 
@@ -93,6 +94,8 @@ export const useSessionsStore = defineStore('sessions', {
       const tab = this.tabs[this.tabs.length - 1] as SessionTab
       this.activeTabId = tab.id
       if (isTauri) {
+        // 发起连接前先打印动作横幅（无论目标可达与否），失败时终端里也有迹可循
+        writeConnectingBanner(tab)
         sshConnect(profile.id)
           .then((sid) => {
             tab.sid = sid
@@ -133,6 +136,7 @@ export const useSessionsStore = defineStore('sessions', {
       this.tabs.push(raw)
       const tab = this.tabs[this.tabs.length - 1] as SessionTab
       this.activeTabId = tab.id
+      writeConnectingBanner(tab)
       try {
         const newSid = await sshDuplicateChannel(src.sid)
         tab.sid = newSid
@@ -164,6 +168,8 @@ export const useSessionsStore = defineStore('sessions', {
       }
       tab.status = 'connecting'
       if (isTauri && tab.profileId) {
+        // 发起连接前先打印动作横幅（无论目标可达与否），失败时终端里也有迹可循
+        writeConnectingBanner(tab)
         try {
           const sid = await sshConnect(tab.profileId)
           tab.sid = sid

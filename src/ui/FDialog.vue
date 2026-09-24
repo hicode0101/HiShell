@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -18,6 +18,7 @@ const emit = defineEmits<{
 }>()
 
 const overlayEl = ref<HTMLElement>()
+const panelEl = ref<HTMLElement>()
 
 function close() {
   emit('update:open', false)
@@ -29,10 +30,11 @@ function onKeydown(e: KeyboardEvent) {
     const overlays = document.querySelectorAll('.f-dialog-overlay')
     if (!overlays.length || overlays[overlays.length - 1] === overlayEl.value) close()
   }
-  // 回车确认：只在最上层对话框生效；焦点在按钮/输入控件上时交给原生行为，避免重复触发
+  // 回车确认：只在最上层对话框生效。焦点在本对话框内的按钮/输入控件上时交给原生行为（按钮回车即点击），
+  // 避免重复触发；焦点在对话框外（如残留的触发按钮）时不拦截，仍执行确认
   if (e.key === 'Enter' && props.enterConfirm && props.open && !e.isComposing) {
     const el = e.target as HTMLElement | null
-    if (el && el.closest('button, input, textarea, select, [contenteditable]')) return
+    if (el && overlayEl.value?.contains(el) && el.closest('button, input, textarea, select, [contenteditable]')) return
     const overlays = document.querySelectorAll('.f-dialog-overlay')
     if (!overlays.length || overlays[overlays.length - 1] === overlayEl.value) {
       e.preventDefault()
@@ -43,9 +45,13 @@ function onKeydown(e: KeyboardEvent) {
 watch(
   () => props.open,
   (v) => {
-    if (typeof document !== 'undefined') {
-      if (v) document.addEventListener('keydown', onKeydown)
-      else document.removeEventListener('keydown', onKeydown)
+    if (typeof document === 'undefined') return
+    if (v) {
+      document.addEventListener('keydown', onKeydown)
+      // 打开时把焦点移入对话框面板：否则焦点残留在打开对话框的按钮上，回车会再次激活该按钮而非确认对话框
+      nextTick(() => panelEl.value?.focus())
+    } else {
+      document.removeEventListener('keydown', onKeydown)
     }
   },
 )
@@ -54,7 +60,7 @@ watch(
 <template>
   <Teleport to="body">
     <div v-if="open" ref="overlayEl" class="f-dialog-overlay">
-      <div class="f-dialog" :style="{ width: width + 'px' }" role="dialog" aria-modal="true">
+      <div ref="panelEl" class="f-dialog" :style="{ width: width + 'px' }" role="dialog" aria-modal="true" tabindex="-1">
         <div class="f-dialog-title">{{ title }}</div>
         <div class="f-dialog-body">
           <slot />
@@ -88,6 +94,10 @@ watch(
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-dialog);
   overflow: hidden;
+}
+.f-dialog:focus,
+.f-dialog:focus-visible {
+  outline: none;
 }
 .f-dialog-title {
   font-size: 18px;

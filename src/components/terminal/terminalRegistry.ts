@@ -176,6 +176,16 @@ export function terminalEntry(tabId: string) {
   return registry.get(tabId)
 }
 
+/**
+ * 连接动作横幅：在发起连接前写入目标终端，让用户看到即将执行的动作。
+ * 与服务器是否可达无关——只要准备连接就打印。
+ * 标签刚创建时 xterm 尚未 open()，此处的写入会被缓冲，面板挂载后照常显示。
+ */
+export function writeConnectingBanner(tab: SessionTab) {
+  const entry = getTerminal(tab)
+  entry.term.write(`\r\n\x1b[90m[HiShell] ${translate('terminal.connecting', { addr: tab.address })}\x1b[0m\r\n\r\n`)
+}
+
 /** 应用设置变化（字体/主题/配色方案）到所有已存在的终端 */
 export function applySettingsToTerminals() {
   const settings = useSettingsStore()
