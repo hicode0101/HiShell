@@ -1,5 +1,6 @@
 /** 字节/速率/时长格式化 */
 import { t } from '../i18n'
+import type { AuthKind } from '../api/types'
 
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '0 Bytes'
@@ -37,4 +38,19 @@ export function fileKindLabel(kind: string, name: string): string {
   if (kind === 'dir') return t('sftp.folder')
   const ext = name.includes('.') ? name.split('.').pop()!.toUpperCase() : ''
   return ext ? t('sftp.fileWithType', { ext }) : t('sftp.file')
+}
+
+/** 认证方式的本地化标签（AuthKind → connect.auth.*，未知类型回退为密码） */
+export function authLabel(auth: AuthKind): string {
+  const key =
+    auth === 'keyboardInteractive'
+      ? 'ki'
+      : auth === 'priFileKey'
+        ? 'privateKey'
+        : auth === 'userKey'
+          ? 'userKey'
+          : auth === 'agent'
+            ? 'agent'
+            : 'password'
+  return t(`connect.auth.${key}`)
 }

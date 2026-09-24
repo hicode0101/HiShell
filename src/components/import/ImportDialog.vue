@@ -8,6 +8,7 @@ import { FButton, FCheckbox, FDialog, toast } from '../../ui'
 import { importApply, importScan, type ImportCandidate } from '../../api/backend'
 import { useProfilesStore } from '../../stores/profiles'
 import { t } from '../../i18n'
+import { authLabel } from '../../utils/format'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
@@ -119,7 +120,7 @@ watch(
             />
             <span class="ir-name" :title="c.name">{{ c.name || c.host }}</span>
             <span class="ir-addr">{{ c.username }}@{{ c.host }}:{{ c.port }}</span>
-            <span class="ir-auth">{{ t(`connect.auth.${c.auth === 'keyboardInteractive' ? 'ki' : c.auth === 'priFileKey' ? 'privateKey' : 'password'}`) }}</span>
+            <span class="ir-auth">{{ authLabel(c.auth) }}</span>
           </label>
         </div>
       </div>

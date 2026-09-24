@@ -459,6 +459,7 @@ export default {
     auth: {
       password: 'Password',
       privateKey: 'Private key',
+      userKey: 'User key',
       ki: 'Keyboard-interactive',
       agent: 'Agent',
     },

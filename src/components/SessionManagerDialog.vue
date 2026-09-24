@@ -10,6 +10,7 @@ import { profileCopy } from '../api/backend'
 import { useSessionsStore } from '../stores/sessions'
 import type { SshProfile } from '../api/types'
 import { t } from '../i18n'
+import { authLabel } from '../utils/format'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
@@ -143,7 +144,7 @@ async function confirmRemove() {
             {{ row.profile.name }}
             <span v-if="row.proxy" class="sm-proxy">{{ row.proxy }}</span>
           </div>
-          <div class="sm-addr">{{ row.addr }} · {{ t(`connect.auth.${row.profile.auth === 'keyboardInteractive' ? 'ki' : row.profile.auth === 'priFileKey' ? 'privateKey' : row.profile.auth === 'agent' ? 'agent' : 'password'}`) }}</div>
+          <div class="sm-addr">{{ row.addr }} · {{ authLabel(row.profile.auth) }}</div>
         </div>
         <div class="sm-ops">
           <button class="sm-ic-btn connect" :title="t('common.connect')" @click="connect(row.profile)">
