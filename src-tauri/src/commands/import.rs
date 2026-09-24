@@ -14,7 +14,7 @@ pub struct ImportCandidate {
     pub host: String,
     pub port: u16,
     pub username: String,
-    /// password | publicKey | keyboardInteractive
+    /// password | priFileKey | keyboardInteractive
     pub auth: String,
     #[serde(default)]
     pub private_key_path: String,
@@ -114,7 +114,7 @@ fn parse_ini(text: &str) -> std::collections::HashMap<String, std::collections::
 /// Xshell 认证方式 Method 值：1=密码 2/3=公钥 4=键盘交互
 fn map_xshell_auth(method: Option<&String>) -> &'static str {
     match method.and_then(|m| m.trim().parse::<u32>().ok()) {
-        Some(2) | Some(3) => "publicKey",
+        Some(2) | Some(3) => "priFileKey",
         Some(4) => "keyboardInteractive",
         _ => "password",
     }
@@ -174,7 +174,7 @@ fn scan_xshell(out: &mut Vec<ImportCandidate>) {
             let auth_kind = map_xshell_auth(method);
             // UserKey 为 Sessions/Keys 下的密钥名，拼接为完整路径（存在才导入）
             let mut private_key_path = String::new();
-            if auth_kind == "publicKey" {
+            if auth_kind == "priFileKey" {
                 if let Some(key) = auth.and_then(|s| s.get("UserKey")) {
                     let key_path = dir.join("Keys").join(key.trim());
                     if key_path.is_file() {

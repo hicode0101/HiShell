@@ -90,7 +90,8 @@ pub struct TestResult {
     pub message: String,
 }
 
-/// 测试连接：真实走传输链（代理/ProxyCommand）+ SSH 握手 + 已存凭据认证尝试。
+/// 测试连接：真实走传输链（代理/ProxyCommand）+ SSH 握手 + 认证尝试。
+/// 严格按配置的认证方式执行（密码类只试密码，密钥类只试密钥，不做回退）；
 /// 自动接受主机密钥（不弹窗）；未存凭据时仅验证到握手层并在 message 中说明。
 #[tauri::command]
 pub async fn ssh_test(
@@ -103,20 +104,21 @@ pub async fn ssh_test(
 
     let timeout_ms = profile.connect_timeout.max(1000);
 
-    // userKey：按名称引用用户密钥管理中的密钥，解析为 ~/.ssh/<name> 的公钥认证
-    let mut profile = profile;
+    // 严格按认证类型取配置：userKey 一律解析为 ~/.ssh/<密钥名>，残留的 privateKeyPath 不参与解析
+    let profile = profile;
+    let mut key_path = profile.private_key_path.clone();
     if profile.auth == "userKey" {
-        profile.auth = "publicKey".into();
-        if profile.private_key_path.trim().is_empty() {
-            if let Some(home) = dirs::home_dir() {
-                profile.private_key_path = home
-                    .join(".ssh")
-                    .join(&profile.user_key_name)
-                    .to_string_lossy()
-                    .to_string();
-            }
+        if profile.user_key_name.trim().is_empty() {
+            return Err("认证方式为用户密钥，但未选择密钥".to_string());
         }
+        key_path = match dirs::home_dir() {
+            Some(home) => home.join(".ssh").join(&profile.user_key_name).to_string_lossy().to_string(),
+            None => return Err("无法定位用户主目录，无法解析用户密钥路径".to_string()),
+        };
     }
+    // 只尝试配置所选认证方式：password / keyboardInteractive（自动应答）→ 密码，priFileKey / userKey → 公钥
+    let use_password = matches!(profile.auth.as_str(), "password" | "keyboardInteractive" | "auto");
+    let use_key = matches!(profile.auth.as_str(), "priFileKey" | "userKey");
 
     // 传输链（SOCKS5 / HTTP CONNECT / ProxyCommand / 直连）
     let transport = crate::ssh::transport::connect_transport(&profile, None)
@@ -157,39 +159,49 @@ pub async fn ssh_test(
     let mut authenticated = false;
     let mut notes: Vec<String> = Vec::new();
 
-    if let Some(p) = pwd {
-        match tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            handle.authenticate_password(&profile.username, &p),
-        )
-        .await
-        {
-            Ok(Ok(true)) => authenticated = true,
-            Ok(Ok(false)) => notes.push("密码认证被拒绝".into()),
-            Ok(Err(e)) => notes.push(format!("密码认证错误: {e}")),
-            Err(_) => notes.push("密码认证超时".into()),
-        }
-    } else {
-        notes.push("未提供密码".into());
-    }
-
-    if !authenticated && !profile.private_key_path.trim().is_empty() {
-        let pass = passphrase.filter(|p| !p.is_empty()).or(bundle.passphrase.clone());
-        let key_path = ssh::manager::expand_tilde(&profile.private_key_path);
-        match russh::keys::load_secret_key(&key_path, pass.as_deref()) {
-            Ok(key) => match tokio::time::timeout(
+    if use_password {
+        if let Some(p) = pwd {
+            match tokio::time::timeout(
                 std::time::Duration::from_millis(timeout_ms),
-                handle.authenticate_publickey(&profile.username, std::sync::Arc::new(key)),
+                handle.authenticate_password(&profile.username, &p),
             )
             .await
             {
                 Ok(Ok(true)) => authenticated = true,
-                Ok(Ok(false)) => notes.push("公钥认证被拒绝".into()),
-                Ok(Err(e)) => notes.push(format!("公钥认证错误: {e}")),
-                Err(_) => notes.push("公钥认证超时".into()),
-            },
-            Err(e) => notes.push(format!("私钥加载失败: {e}")),
+                Ok(Ok(false)) => notes.push("密码认证被拒绝".into()),
+                Ok(Err(e)) => notes.push(format!("密码认证错误: {e}")),
+                Err(_) => notes.push("密码认证超时".into()),
+            }
+        } else {
+            notes.push("未提供密码".into());
         }
+    }
+
+    if use_key {
+        if !key_path.trim().is_empty() {
+            let pass = passphrase.filter(|p| !p.is_empty()).or(bundle.passphrase.clone());
+            let key_path = ssh::manager::expand_tilde(&key_path);
+            match russh::keys::load_secret_key(&key_path, pass.as_deref()) {
+                Ok(key) => match tokio::time::timeout(
+                    std::time::Duration::from_millis(timeout_ms),
+                    handle.authenticate_publickey(&profile.username, std::sync::Arc::new(key)),
+                )
+                .await
+                {
+                    Ok(Ok(true)) => authenticated = true,
+                    Ok(Ok(false)) => notes.push("公钥认证被拒绝".into()),
+                    Ok(Err(e)) => notes.push(format!("公钥认证错误: {e}")),
+                    Err(_) => notes.push("公钥认证超时".into()),
+                },
+                Err(e) => notes.push(format!("私钥加载失败: {e}")),
+            }
+        } else {
+            notes.push("未配置私钥文件".into());
+        }
+    }
+
+    if !use_password && !use_key {
+        notes.push("agent 认证仅能在实际连接时验证".into());
     }
 
     let _ = handle
@@ -198,7 +210,7 @@ pub async fn ssh_test(
 
     if authenticated {
         Ok(TestResult { ok: true, authenticated: true, message: "连接与认证成功".into() })
-    } else if notes.iter().all(|n| n == "未提供密码") && profile.private_key_path.trim().is_empty() && profile.auth != "agent" {
+    } else if !use_key && notes.iter().all(|n| n == "未提供密码") {
         Ok(TestResult { ok: true, authenticated: false, message: "网络与握手正常，但未提供凭据，无法验证认证".into() })
     } else {
         Ok(TestResult { ok: false, authenticated: false, message: format!("网络与握手正常，但认证未通过（{}）", notes.join("；")) })

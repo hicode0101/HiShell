@@ -68,7 +68,7 @@ export interface ImportCandidate {
   host: string
   port: number
   username: string
-  auth: 'password' | 'publicKey' | 'keyboardInteractive'
+  auth: 'password' | 'priFileKey' | 'keyboardInteractive'
   privateKeyPath: string
   originPath: string
 }

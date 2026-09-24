@@ -53,7 +53,7 @@ function validateForm(): boolean {
 
 const authOptions = computed(() => [
   { kind: 'password' as AuthKind, label: t('connect.auth.password') },
-  { kind: 'publicKey' as AuthKind, label: t('connect.auth.privateKey') },
+  { kind: 'priFileKey' as AuthKind, label: t('connect.auth.privateKey') },
   { kind: 'userKey' as AuthKind, label: t('connect.auth.userKey') },
   { kind: 'keyboardInteractive' as AuthKind, label: t('connect.auth.ki') },
   { kind: 'agent' as AuthKind, label: t('connect.auth.agent') },
@@ -134,7 +134,7 @@ function validate(): boolean {
     toast(t('connect.hostRequired'), 'error')
     return false
   }
-  if (authKind.value === 'publicKey' && !form.privateKeyPath.trim()) {
+  if (authKind.value === 'priFileKey' && !form.privateKeyPath.trim()) {
     toast(t('connect.privateKeyRequired'), 'error')
     return false
   }
@@ -157,7 +157,7 @@ function buildProfile(): SshProfile {
     ...base,
     auth,
     temporary: true,
-    privateKeyPath: auth === 'publicKey' ? form.privateKeyPath.trim() : '',
+    privateKeyPath: auth === 'priFileKey' ? form.privateKeyPath.trim() : '',
     userKeyName: auth === 'userKey' ? form.userKeyName : '',
   }
 }
@@ -215,7 +215,7 @@ async function connectNow() {
         <span class="lbl">{{ t('connect.password') }}</span>
         <FTextBox v-model="form.password" type="password" :placeholder="t('connect.passwordPlaceholder')" @keydown.enter="connectNow" />
       </template>
-      <template v-else-if="authKind === 'publicKey'">
+      <template v-else-if="authKind === 'priFileKey'">
         <span class="lbl">{{ t('connect.privateKeyFile') }}</span>
         <div class="qc-row">
           <FTextBox v-model="form.privateKeyPath" :placeholder="t('connect.privateKeyPlaceholder')" @keydown.enter="connectNow" />

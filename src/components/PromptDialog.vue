@@ -37,7 +37,7 @@ const answers = ref<string[]>([])
 /* ---------- 统一认证对话框（authRetry，布局对齐快速连接） ---------- */
 const AUTH_METHODS = [
   { value: 'password', labelKey: 'connect.auth.password' },
-  { value: 'privateKey', labelKey: 'connect.auth.privateKey' },
+  { value: 'priFileKey', labelKey: 'connect.auth.privateKey' },
   { value: 'userKey', labelKey: 'connect.auth.userKey' },
   { value: 'keyboardInteractive', labelKey: 'connect.auth.ki' },
   { value: 'agent', labelKey: 'connect.auth.agent' },
@@ -79,8 +79,7 @@ function submitAuth() {
   if (authKind.value === 'password') {
     body.password = authPassword.value
     body.rememberPassword = authRemember.value
-  } else if (authKind.value === 'privateKey') {
-    body.method = 'publicKey'
+  } else if (authKind.value === 'priFileKey') {
     body.keyPath = authKeyPath.value
     body.passphrase = authPassphrase.value
   } else if (authKind.value === 'userKey') {
@@ -103,12 +102,12 @@ watch(current, (v) => {
     authPassphrase.value = ''
     authKeyNames.value = ((p.userKeys as string[]) ?? []).filter(Boolean)
     // 默认认证方式 = 会话配置中的原始方式（profileAuth），而不是归一化后的 method——
-    // 例如 userKey 配置在认证阶段已解析为 publicKey+路径，但对话框仍应默认「用户密钥」
+    // 例如 userKey 配置在认证阶段已解析为 priFileKey+路径，但对话框仍应默认「用户密钥」
     const pa: string = p.profileAuth ?? ''
     if (pa === 'keyboardInteractive') {
       authKind.value = 'keyboardInteractive'
-    } else if (pa === 'privateKey') {
-      authKind.value = 'privateKey'
+    } else if (pa === 'priFileKey') {
+      authKind.value = 'priFileKey'
       authKeyPath.value = p.keyPath || ''
     } else if (pa === 'userKey') {
       authKind.value = 'userKey'
@@ -120,14 +119,14 @@ watch(current, (v) => {
       authKind.value =
         p.method === 'keyboardInteractive'
           ? 'keyboardInteractive'
-          : p.method === 'publicKey'
+          : p.method === 'priFileKey'
             ? p.keyPath
-              ? 'privateKey'
+              ? 'priFileKey'
               : 'userKey'
             : p.method === 'agent'
               ? 'agent'
               : 'password'
-      authKeyPath.value = authKind.value === 'privateKey' ? p.keyPath || '' : ''
+      authKeyPath.value = authKind.value === 'priFileKey' ? p.keyPath || '' : ''
       if (authKind.value === 'userKey' && !authKeyName.value) authKeyName.value = authKeyNames.value[0] ?? ''
     }
     // 与快速连接一致：前端实时加载用户密钥列表（payload 里的列表仅作兜底初值）
@@ -234,7 +233,7 @@ function kiPrompts(o: Record<string, unknown> | undefined): { text: string; echo
               <FCheckbox v-model="authRemember" :label="t('prompt.remember')" />
             </div>
           </template>
-          <template v-else-if="authKind === 'privateKey'">
+          <template v-else-if="authKind === 'priFileKey'">
             <span class="pa-label">{{ t('connect.privateKeyFile') }}</span>
             <div class="pa-row">
               <FTextBox v-model="authKeyPath" spellcheck="false" :placeholder="t('connect.privateKeyPlaceholder')" @keydown.enter="submitAuth" />

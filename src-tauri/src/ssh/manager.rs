@@ -55,7 +55,7 @@ pub enum PromptPayload {
     AuthRetry {
         host: String,
         user: String,
-        /// 当前失败的认证方式（对话框默认选中）：password / publicKey / keyboardInteractive
+        /// 当前失败的认证方式（对话框默认选中）：password / priFileKey / keyboardInteractive
         method: String,
         /// 失败原因（对话框顶部红字）
         error: String,
@@ -65,7 +65,7 @@ pub enum PromptPayload {
         /// 用户密钥管理中的可用密钥名
         #[serde(rename = "userKeys")]
         user_keys: Vec<String>,
-        /// 会话配置中的原始认证方式：password / privateKey / userKey / keyboardInteractive / agent
+        /// 会话配置中的原始认证方式：password / priFileKey / userKey / keyboardInteractive / agent
         /// （对话框默认选中以此为准，而不是归一化后的 method）
         #[serde(rename = "profileAuth")]
         profile_auth: String,
@@ -292,7 +292,7 @@ fn load_private_key(path: &str, passphrase: Option<&str>) -> AppResult<key::KeyP
 }
 
 /// 认证：严格按用户配置的认证方式执行，不做静默回退——
-/// 密码错误就报「密码认证被拒绝」，绝不落到 agent/publicKey 等未配置方式。
+/// 密码错误就报「密码认证被拒绝」，绝不落到 agent/priFileKey 等未配置方式。
 /// 失败后弹统一认证对话框：用户可重输密码、换密钥或切换认证方式，直至成功或取消。
 async fn authenticate(
     handle: &mut Handle<SshHandler>,
@@ -300,25 +300,28 @@ async fn authenticate(
     profile: &Profile,
     secrets_bundle: &secrets::ProfileSecrets,
 ) -> AppResult<()> {
-    // userKey：按名称引用用户密钥管理中的密钥，解析为 ~/.ssh/<name> 的公钥认证
+    // 严格按认证类型取配置：userKey 一律解析为 ~/.ssh/<密钥名>，
+    // 残留的 privateKeyPath（如先配 priFileKey 后改 userKey）不得参与认证
     let profile_auth = profile.auth.clone();
     let user_key_name = profile.user_key_name.clone();
     let mut profile = profile.clone();
     if profile.auth == "userKey" {
-        profile.auth = "publicKey".into();
-        if profile.private_key_path.trim().is_empty() {
-            if let Some(home) = dirs::home_dir() {
-                profile.private_key_path = home
-                    .join(".ssh")
-                    .join(&profile.user_key_name)
-                    .to_string_lossy()
-                    .to_string();
-            }
+        if profile.user_key_name.trim().is_empty() {
+            return Err(AppError::msg("认证方式为用户密钥，但未选择密钥"));
         }
+        profile.auth = "priFileKey".into();
+        profile.private_key_path = match dirs::home_dir() {
+            Some(home) => home
+                .join(".ssh")
+                .join(&profile.user_key_name)
+                .to_string_lossy()
+                .to_string(),
+            None => return Err(AppError::msg("无法定位用户主目录，无法解析用户密钥路径")),
+        };
     }
     let mut method = match profile.auth.as_str() {
         "agent" => "agent",
-        "publicKey" => "publicKey",
+        "priFileKey" => "priFileKey",
         "keyboardInteractive" => "keyboardInteractive",
         _ => "password",
     };
@@ -330,7 +333,7 @@ async fn authenticate(
         }
         let method_name = match method {
             "agent" => "agent",
-            "publicKey" => "公钥",
+            "priFileKey" => "公钥",
             "keyboardInteractive" => "键盘交互",
             _ => "密码",
         };
@@ -341,7 +344,7 @@ async fn authenticate(
         ));
         let result: AppResult<bool> = match method {
             "agent" => auth_agent(handle, shared).await,
-            "publicKey" => {
+            "priFileKey" => {
                 auth_publickey(handle, shared, &profile, secrets_bundle, override_creds.as_ref()).await
             }
             "password" => auth_password(handle, shared, secrets_bundle, override_creds.as_ref()).await,
@@ -387,7 +390,7 @@ async fn authenticate(
         }
         let m = answer.get("method").and_then(|v| v.as_str()).unwrap_or("password");
         method = match m {
-            "userKey" | "publicKey" => "publicKey",
+            "userKey" | "priFileKey" => "priFileKey",
             "keyboardInteractive" => "keyboardInteractive",
             "agent" => "agent",
             _ => "password",

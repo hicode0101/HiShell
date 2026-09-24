@@ -25,7 +25,7 @@ export type SpecialDirKind =
 
 /* ---------- 连接配置 ---------- */
 
-export type AuthKind = 'password' | 'publicKey' | 'userKey' | 'keyboardInteractive' | 'agent' | 'auto'
+export type AuthKind = 'password' | 'priFileKey' | 'userKey' | 'keyboardInteractive' | 'agent' | 'auto'
 
 export type ProxyConfig =
   | { kind: 'none' }

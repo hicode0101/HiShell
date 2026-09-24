@@ -89,7 +89,7 @@ watch(open, (v) => {
 /* 认证：稳定值 + 本地化标签 */
 const authOptions = computed(() => [
   { kind: 'password' as AuthKind, label: t('connect.auth.password') },
-  { kind: 'publicKey' as AuthKind, label: t('connect.auth.privateKey') },
+  { kind: 'priFileKey' as AuthKind, label: t('connect.auth.privateKey') },
   { kind: 'userKey' as AuthKind, label: t('connect.auth.userKey') },
   { kind: 'keyboardInteractive' as AuthKind, label: t('connect.auth.ki') },
   { kind: 'agent' as AuthKind, label: t('connect.auth.agent') },
@@ -226,6 +226,7 @@ async function testConnection() {
   }
   if (!validateForm()) return
   coerceNumbers()
+  resetOtherAuthFields()
   testing.value = true
   try {
     form.auth = authKind.value
@@ -275,6 +276,14 @@ function secretsFromForm() {
   return Object.keys(secrets).length ? secrets : undefined
 }
 
+/** 切换认证方式后保存/连接时，重置其它认证方式的配置项（口令为两种密钥方式共用，保留） */
+function resetOtherAuthFields() {
+  if (authKind.value !== 'password') form.password = ''
+  if (authKind.value === 'priFileKey') form.userKeyName = ''
+  if (authKind.value === 'userKey') form.privateKeyPath = ''
+  if (authKind.value !== 'priFileKey' && authKind.value !== 'userKey') form.privateKeyPassphrase = ''
+}
+
 async function saveProfile() {
   form.auth = authKind.value
   form.proxy = buildProxy()
@@ -284,6 +293,7 @@ async function saveProfile() {
     return
   }
   coerceNumbers()
+  resetOtherAuthFields()
   if (!form.name) form.name = form.host
   const saved = await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
   storedPassword.value = !!saved.hasStoredPassword
@@ -303,6 +313,7 @@ async function connectNow() {
     return
   }
   coerceNumbers()
+  resetOtherAuthFields()
   if (!form.name) form.name = form.host
   // 先持久化（含凭据），再发起连接——避免后端尚未读到该配置的竞态
   const saved = await profilesStore.upsert(JSON.parse(JSON.stringify(form)), secretsFromForm())
@@ -341,7 +352,7 @@ async function connectNow() {
           @clear-stored="clearStored('password')"
         />
       </template>
-      <template v-else-if="authKind === 'publicKey'">
+      <template v-else-if="authKind === 'priFileKey'">
         <span class="cd-label">{{ t('connect.privateKeyFile') }}</span>
         <div class="cd-row">
           <FTextBox v-model="form.privateKeyPath" :placeholder="t('connect.privateKeyPlaceholder')" />

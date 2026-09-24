@@ -140,7 +140,7 @@ function seedProfiles(): SshProfile[] {
       host: '10.0.0.128',
       port: 22,
       username: 'admin',
-      auth: 'publicKey',
+      auth: 'priFileKey',
       privateKeyPath: 'C:\\Users\\demo\\.ssh\\id_ed25519',
       proxy: { kind: 'socks5', host: '127.0.0.1', port: 1080 } as ProxyConfig,
     }),

@@ -212,7 +212,7 @@ interface SshProfile {
   id: string; name: string; group?: string;
   host: string; port: number;            // 默认 22
   username: string;                      // 默认 root
-  auth: 'password' | 'publicKey' | 'keyboardInteractive' | 'agent' | 'auto';
+  auth: 'password' | 'priFileKey' | 'keyboardInteractive' | 'agent' | 'auto';
   password?: string;                     // 原型期明文存 localStorage；M2 移 keyring
   privateKeyPath?: string; privateKeyPassphrase?: string;
   // 连接方式（互斥）

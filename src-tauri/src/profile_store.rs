@@ -60,7 +60,7 @@ pub struct Profile {
     pub host: String,
     pub port: u16,
     pub username: String,
-    pub auth: String, // password | publicKey | keyboardInteractive | agent | auto
+    pub auth: String, // password | priFileKey | keyboardInteractive | agent | auto
     #[serde(default)]
     pub password: String,
     #[serde(default, rename = "hasStoredPassword")]
@@ -161,7 +161,7 @@ fn seed() -> Vec<Profile> {
     p3.name = "示例：经 SOCKS5 代理访问内网".into();
     p3.host = "10.0.0.100".into();
     p3.username = "root".into();
-    p3.auth = "publicKey".into();
+    p3.auth = "priFileKey".into();
     p3.proxy = ProxyConfig::Socks5 {
         host: "127.0.0.1".into(),
         port: 1080,
@@ -195,6 +195,15 @@ pub fn upsert_with_secrets(mut profile: Profile, secrets_in: &SecretsIn) -> AppR
     profile.password.clear();
     profile.private_key_passphrase.clear();
 
+    let mut list = load();
+    // 认证方式是否发生切换（同一 id 保存前后的 auth 对比）
+    let auth_changed = list
+        .iter()
+        .find(|p| p.id == profile.id)
+        .map(|p| p.auth.as_str())
+        != Some(profile.auth.as_str());
+    let key_based = matches!(profile.auth.as_str(), "priFileKey" | "userKey");
+
     let mut bundle = secrets::get(&profile.id).unwrap_or_default();
     if secrets_in.clear {
         bundle = Default::default();
@@ -218,6 +227,16 @@ pub fn upsert_with_secrets(mut profile: Profile, secrets_in: &SecretsIn) -> AppR
     if secrets_in.clear_passphrase {
         bundle.passphrase = None;
     }
+    // 切换认证方式后，新方式用不到的已存凭据一律清除：
+    // 密钥类（priFileKey/userKey）只用口令，密码类（password/keyboardInteractive/auto）只用密码，agent 两者皆不用
+    if auth_changed {
+        if key_based || profile.auth == "agent" {
+            bundle.password = None;
+        }
+        if !key_based {
+            bundle.passphrase = None;
+        }
+    }
     if bundle.password.is_some() || bundle.passphrase.is_some() || bundle.proxy_password.is_some() {
         secrets::set(&profile.id, &bundle)?;
     } else {
@@ -226,7 +245,14 @@ pub fn upsert_with_secrets(mut profile: Profile, secrets_in: &SecretsIn) -> AppR
     profile.has_stored_password = bundle.password.is_some();
     profile.has_stored_passphrase = bundle.passphrase.is_some();
 
-    let mut list = load();
+    // 配置规范：只保留当前认证方式所需的配置项，其它认证方式的字段一律重置
+    if profile.auth != "priFileKey" {
+        profile.private_key_path.clear();
+    }
+    if profile.auth != "userKey" {
+        profile.user_key_name.clear();
+    }
+
     if let Some(slot) = list.iter_mut().find(|p| p.id == profile.id) {
         *slot = profile.clone();
     } else {
