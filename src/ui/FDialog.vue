@@ -6,11 +6,16 @@ const props = withDefaults(
     open: boolean
     title: string
     width?: number
+    /** 打开时按回车触发 confirm（用于删除确认等无输入框的对话框） */
+    enterConfirm?: boolean
   }>(),
-  { width: 560 },
+  { width: 560, enterConfirm: false },
 )
 
-const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
+const emit = defineEmits<{
+  (e: 'update:open', v: boolean): void
+  (e: 'confirm'): void
+}>()
 
 const overlayEl = ref<HTMLElement>()
 
@@ -23,6 +28,16 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && props.open) {
     const overlays = document.querySelectorAll('.f-dialog-overlay')
     if (!overlays.length || overlays[overlays.length - 1] === overlayEl.value) close()
+  }
+  // 回车确认：只在最上层对话框生效；焦点在按钮/输入控件上时交给原生行为，避免重复触发
+  if (e.key === 'Enter' && props.enterConfirm && props.open && !e.isComposing) {
+    const el = e.target as HTMLElement | null
+    if (el && el.closest('button, input, textarea, select, [contenteditable]')) return
+    const overlays = document.querySelectorAll('.f-dialog-overlay')
+    if (!overlays.length || overlays[overlays.length - 1] === overlayEl.value) {
+      e.preventDefault()
+      emit('confirm')
+    }
   }
 }
 watch(

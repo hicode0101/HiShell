@@ -155,6 +155,23 @@ function submitKi() {
   respond({ answers: answers.value.slice() })
 }
 
+/* 回车确认按提示类型映射主操作：hostkey 变更是安全告警，回车执行安全的「断开连接」而非保存新指纹 */
+function onEnterConfirm() {
+  switch (kind.value) {
+    case 'hostkeyNew':
+      respondHostkey('save')
+      break
+    case 'hostkeyMismatch':
+      respondHostkey('cancel')
+      break
+    case 'authRetry':
+      submitAuth()
+      break
+    default:
+      submitKi()
+  }
+}
+
 function hostOf(o: Record<string, unknown> | undefined): string {
   return (o?.host as string) ?? ''
 }
@@ -186,7 +203,7 @@ function kiPrompts(o: Record<string, unknown> | undefined): { text: string; echo
 
 <template>
   <!-- 认证重试比其他提示宽 100px（620），hostkey / keyboard-interactive 保持 520 -->
-  <FDialog :open="open" :title="title" :width="kind === 'authRetry' ? 620 : 520">
+  <FDialog :open="open" :title="title" :width="kind === 'authRetry' ? 620 : 520" enter-confirm @confirm="onEnterConfirm">
     <template v-if="current">
       <!-- 首次连接 hostkey -->
       <template v-if="kind === 'hostkeyNew'">
@@ -220,7 +237,7 @@ function kiPrompts(o: Record<string, unknown> | undefined): { text: string; echo
           <template v-else-if="authKind === 'privateKey'">
             <span class="pa-label">{{ t('connect.privateKeyFile') }}</span>
             <div class="pa-row">
-              <FTextBox v-model="authKeyPath" spellcheck="false" :placeholder="t('connect.privateKeyPlaceholder')" />
+              <FTextBox v-model="authKeyPath" spellcheck="false" :placeholder="t('connect.privateKeyPlaceholder')" @keydown.enter="submitAuth" />
               <FButton @click="pickPrivateKey">{{ t('common.browse') }}</FButton>
             </div>
             <span class="pa-label">{{ t('connect.passphrase') }}</span>

@@ -193,16 +193,18 @@ async function connectNow() {
     :open="open"
     :title="t('quickconnect.title')"
     :width="530"
+    enter-confirm
     @update:open="(v: boolean) => !v && emit('update:open', false)"
+    @confirm="connectNow"
   >
     <div class="qc-body">
       <div class="qc-grid">
       <span class="lbl">{{ t('connect.host') }}</span>
-      <FTextBox v-model="form.host" spellcheck="false" :placeholder="t('connect.hostPlaceholder')" :class="{ 'cd-invalid': showErr && errs.host }" />
+      <FTextBox v-model="form.host" spellcheck="false" :placeholder="t('connect.hostPlaceholder')" :class="{ 'cd-invalid': showErr && errs.host }" @keydown.enter="connectNow" />
       <span class="lbl">{{ t('connect.port') }}</span>
-      <FTextBox v-model="form.port" spellcheck="false" placeholder="1–65535" :class="{ 'cd-invalid': showErr && errs.port }" />
+      <FTextBox v-model="form.port" spellcheck="false" placeholder="1–65535" :class="{ 'cd-invalid': showErr && errs.port }" @keydown.enter="connectNow" />
       <span class="lbl">{{ t('connect.username') }}</span>
-      <FTextBox v-model="form.username" spellcheck="false" />
+      <FTextBox v-model="form.username" spellcheck="false" @keydown.enter="connectNow" />
     </div>
 
     <div class="qc-auth-title">{{ t('connect.authSection') }}</div>
@@ -211,23 +213,23 @@ async function connectNow() {
       <FComboBox v-model="authLabel" :options="authOptions.map((o) => o.label)" />
       <template v-if="authKind === 'password'">
         <span class="lbl">{{ t('connect.password') }}</span>
-        <FTextBox v-model="form.password" type="password" :placeholder="t('connect.passwordPlaceholder')" />
+        <FTextBox v-model="form.password" type="password" :placeholder="t('connect.passwordPlaceholder')" @keydown.enter="connectNow" />
       </template>
       <template v-else-if="authKind === 'publicKey'">
         <span class="lbl">{{ t('connect.privateKeyFile') }}</span>
         <div class="qc-row">
-          <FTextBox v-model="form.privateKeyPath" :placeholder="t('connect.privateKeyPlaceholder')" />
+          <FTextBox v-model="form.privateKeyPath" :placeholder="t('connect.privateKeyPlaceholder')" @keydown.enter="connectNow" />
           <FButton @click="pickPrivateKey">{{ t('common.browse') }}</FButton>
         </div>
         <span class="lbl">{{ t('connect.passphrase') }}</span>
-        <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" />
+        <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" @keydown.enter="connectNow" />
       </template>
       <template v-else-if="authKind === 'userKey'">
         <span class="lbl">{{ t('connect.userKeyLabel') }}</span>
         <FComboBox v-if="userKeyNames.length" v-model="form.userKeyName" :options="userKeyNames" />
         <span v-else class="qc-hint">{{ t('connect.noUserKeys') }}</span>
         <span class="lbl">{{ t('connect.passphrase') }}</span>
-        <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" />
+        <FTextBox v-model="form.privateKeyPassphrase" type="password" :placeholder="t('connect.passphrasePlaceholder')" @keydown.enter="connectNow" />
       </template>
       <template v-else-if="authKind === 'keyboardInteractive'">
         <span class="lbl">{{ t('connect.hint') }}</span>

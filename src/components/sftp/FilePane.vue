@@ -937,7 +937,9 @@ defineExpose({
       :open="dialog === 'delete'"
       :title="t('sftp.deleteTitle')"
       :width="440"
+      enter-confirm
       @update:open="(v: boolean) => (!v && (dialog = null))"
+      @confirm="!dialogBusy && applyDelete()"
     >
       <div class="op-dialog-body">
         <template v-if="deleteTargets.length === 1">

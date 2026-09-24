@@ -35,7 +35,14 @@ function confirm() {
 </script>
 
 <template>
-  <FDialog :open="open" :title="title" :width="420" @update:open="emit('update:open', $event)">
+  <FDialog
+    :open="open"
+    :title="title"
+    :width="420"
+    enter-confirm
+    @update:open="emit('update:open', $event)"
+    @confirm="confirm"
+  >
     <div class="f-confirm-message">{{ message }}</div>
     <template #footer>
       <FButton @click="emit('update:open', false)">{{ cancelLabel }}</FButton>
