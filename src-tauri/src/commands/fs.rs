@@ -15,6 +15,9 @@ pub struct DirEntryDto {
     pub mtime: u64,
     /// 远程权限串（如 drwxr-xr-x），本地为空
     pub attrs: String,
+    /// 盘符等「显示名 ≠ 实际路径」条目的真实跳转路径（此电脑视图）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 fn entry_dto(name: String, meta: &fs::Metadata) -> DirEntryDto {
@@ -31,7 +34,7 @@ fn entry_dto(name: String, meta: &fs::Metadata) -> DirEntryDto {
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    DirEntryDto { name, kind: kind.to_string(), size: meta.len(), mtime, attrs: String::new() }
+    DirEntryDto { name, kind: kind.to_string(), size: meta.len(), mtime, attrs: String::new(), path: None }
 }
 
 /// 列出本地目录；path 为空时返回盘符列表（Windows）
@@ -66,6 +69,7 @@ fn list_drives() -> Vec<DirEntryDto> {
                 size: 0,
                 mtime: 0,
                 attrs: String::new(),
+                path: Some(path),
             });
         }
     }
@@ -74,7 +78,14 @@ fn list_drives() -> Vec<DirEntryDto> {
 
 #[cfg(not(windows))]
 fn list_drives() -> Vec<DirEntryDto> {
-    vec![DirEntryDto { name: "/".into(), kind: "dir".into(), size: 0, mtime: 0, attrs: String::new() }]
+    vec![DirEntryDto {
+        name: "/".into(),
+        kind: "dir".into(),
+        size: 0,
+        mtime: 0,
+        attrs: String::new(),
+        path: Some("/".into()),
+    }]
 }
 
 /// 系统特殊目录（桌面/文档/下载等），本地窗格快速链接
@@ -104,6 +115,14 @@ pub fn fs_rename(old_path: String, new_path: String) -> Result<(), String> {
 /// 本地删除（文件或目录，目录递归）
 #[tauri::command]
 pub fn fs_delete(path: String) -> Result<(), String> {
+    // 防御：拒绝删除磁盘根目录（如 C:\ / C:）
+    #[cfg(windows)]
+    {
+        let t = path.trim();
+        if t.len() <= 3 && (t.ends_with(':') || t.ends_with('\\') || t.ends_with('/')) {
+            return Err("不能删除磁盘根目录".into());
+        }
+    }
     let p = std::path::Path::new(&path);
     if p.is_dir() {
         fs::remove_dir_all(p).map_err(|e| format!("删除文件夹失败: {e}"))

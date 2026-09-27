@@ -59,14 +59,26 @@ const mockFs: Record<string, MockNode> = {
     Downloads: dir({}),
     '.ssh': dir({ 'id_ed25519': file(411, 60), 'id_ed25519.pub': file(98, 60), 'known_hosts': file(1_024, 1) }, 60),
   }),
+  'C:\\': dir({ Users: dir({}) }),
+  'C:\\Users': dir({ demo: dir({}) }),
+  'D:\\': dir({ 资料备份: dir({}, 8), 'readme.txt': file(1_024, 8) }),
 }
 
 function normalizeKey(path: string): string {
-  return path.replace(/\/$/, '').replace(/\\$/, '')
+  // Windows 盘符根保留尾部反斜杠：C: 是盘符相对路径，C:\ 才是根目录，二者不同
+  if (/^[a-zA-Z]:\\?$/.test(path)) return path.slice(0, 2) + '\\'
+  return path.replace(/[\\/]+$/, '')
 }
 
 export async function mockListDir(path: string): Promise<DirEntry[]> {
   await sleep(120)
+  // 此电脑视图：磁盘分区列表（path 字段为真实跳转路径）
+  if (!normalizeKey(path)) {
+    return [
+      { name: '本地磁盘 (C:)', kind: 'dir', size: 0, mtime: now - day, path: 'C:\\' },
+      { name: '数据盘 (D:)', kind: 'dir', size: 0, mtime: now - 2 * day, path: 'D:\\' },
+    ]
+  }
   const node = mockFs[normalizeKey(path)]
   if (!node || node.kind !== 'dir') return []
   return Object.entries(node.children ?? {}).map(([name, child]) => ({
@@ -79,7 +91,6 @@ export async function mockListDir(path: string): Promise<DirEntry[]> {
 
 const mockRemoteRoot: Record<string, DirEntry[]> = {
   '/root': [
-    { name: '..', kind: 'dir', size: 4096, mtime: now - 30 * day },
     { name: 'cert', kind: 'dir', size: 4096, mtime: now - 38 * day, attrs: 'drwxr-xr-x' },
     { name: 'docker-compose.yml', kind: 'file', size: 1_842, mtime: now - 5 * day, attrs: '-rw-r--r--' },
     { name: 'nginx.conf', kind: 'file', size: 2_464, mtime: now - 12 * day, attrs: '-rw-r--r--' },
@@ -93,7 +104,6 @@ const mockRemoteRoot: Record<string, DirEntry[]> = {
     { name: 'backup-20260918.tar.gz', kind: 'file', size: 1_073_741_824, mtime: now - 2 * day, attrs: '-rw-------' },
   ],
   '/root/cert': [
-    { name: '..', kind: 'dir', size: 4096, mtime: now - 30 * day },
     { name: 'server.crt', kind: 'file', size: 2_048, mtime: now - 38 * day, attrs: '-rw-r--r--' },
     { name: 'server.key', kind: 'file', size: 1_704, mtime: now - 38 * day, attrs: '-rw-------' },
     { name: 'ca-bundle.crt', kind: 'file', size: 6_944, mtime: now - 38 * day, attrs: '-rw-r--r--' },
@@ -104,7 +114,6 @@ export async function mockListRemoteDir(path: string): Promise<DirEntry[]> {
   await sleep(180)
   return (
     mockRemoteRoot[path] ?? [
-      { name: '..', kind: 'dir', size: 4096, mtime: now - day },
       { name: `mock-${path.split('/').pop() || 'dir'}`, kind: 'dir', size: 4096, mtime: now - day, attrs: 'drwxr-xr-x' },
       { name: 'readme.txt', kind: 'file', size: 1_233, mtime: now - day, attrs: '-rw-r--r--' },
     ]

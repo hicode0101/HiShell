@@ -12,6 +12,8 @@ export interface DirEntry {
   mtime: number
   /** 远程文件权限串（如 drwxr-xr-x），本地为空 */
   attrs?: string
+  /** 盘符等「显示名 ≠ 实际路径」条目的真实跳转路径（本地此电脑视图） */
+  path?: string
 }
 
 /** 远程文本文件内容（后端已按检测到的编码解码为 UTF-8，行尾统一 \n） */

@@ -34,6 +34,7 @@ export const ICONS: Record<string, string> = {
   paste: `<rect x="6.5" y="4" width="7" height="3" rx="1"/><path d="M6.5 5.5H5a1 1 0 0 0-1 1V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1h-1.5"/>`,
   monitor: `<rect x="3" y="4.5" width="14" height="9.5" rx="1.2"/><path d="M7 17h6M10 14v3"/>`,
   server: `<rect x="3.5" y="3.5" width="13" height="5.5" rx="1"/><rect x="3.5" y="11" width="13" height="5.5" rx="1"/><path d="M6 6.25h.01M6 13.75h.01M8.5 6.25h.01M8.5 13.75h.01"/>`,
+  disk: `<ellipse cx="10" cy="5.2" rx="6.6" ry="2.6"/><path d="M3.4 5.2v9.6c0 1.44 2.95 2.6 6.6 2.6s6.6-1.16 6.6-2.6V5.2M3.4 10c0 1.44 2.95 2.6 6.6 2.6s6.6-1.16 6.6-2.6"/>`,
   star: `<path d="M10 2.9l2.35 4.76 5.25.76-3.8 3.7.9 5.24L10 14.9l-4.7 2.46.9-5.24-3.8-3.7 5.25-.76z"/>`,
   'star-fill': `<path d="M10 2.9l2.35 4.76 5.25.76-3.8 3.7.9 5.24L10 14.9l-4.7 2.46.9-5.24-3.8-3.7 5.25-.76z" fill="currentColor" stroke="none"/>`,
   lock: `<rect x="5" y="9" width="10" height="7.5" rx="1.5"/><path d="M7.5 9V7a2.5 2.5 0 0 1 5 0v2"/>`,

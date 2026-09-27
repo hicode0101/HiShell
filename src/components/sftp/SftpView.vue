@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SessionTab, DirEntry } from '../../api/types'
 import FilePane from './FilePane.vue'
 import type { TransferRequest } from './FilePane.vue'
@@ -31,10 +31,17 @@ const splitRatio = ref(0.5)
 const panesEl = ref<HTMLElement>()
 const leftCount = ref({ files: 0, dirs: 0 })
 const rightCount = ref({ files: 0, dirs: 0 })
+const leftSel = ref<DirEntry[]>([])
+const rightSel = ref<DirEntry[]>([])
 /** 远程面板选中的文件总大小；选中文件夹或未选中时为 null（状态栏不显示） */
 const selSize = ref<number | null>(null)
 
+function onLocalSelection(entries: DirEntry[]) {
+  leftSel.value = entries
+}
+
 function onRemoteSelection(entries: DirEntry[]) {
+  rightSel.value = entries
   const real = entries.filter((e) => e.name !== '..')
   if (!real.length || real.some((e) => e.kind === 'dir')) {
     selSize.value = null
@@ -42,6 +49,15 @@ function onRemoteSelection(entries: DirEntry[]) {
   }
   selSize.value = real.reduce((sum, e) => sum + (e.size || 0), 0)
 }
+
+/** 状态栏汇总：窗格有选中 → 显示选中统计；无选中 → 显示当前目录统计 */
+function summarize(count: { files: number; dirs: number }, sel: DirEntry[]) {
+  if (!sel.length) return { dirs: count.dirs, files: count.files, selected: false }
+  const dirs = sel.filter((e) => e.kind === 'dir').length
+  return { dirs, files: sel.length - dirs, selected: true }
+}
+const leftSummary = computed(() => summarize(leftCount.value, leftSel.value))
+const rightSummary = computed(() => summarize(rightCount.value, rightSel.value))
 const leftPath = ref(mockSpecialDirs.desktop)
 const rightPath = ref('/root')
 
@@ -264,6 +280,7 @@ onUnmounted(() => {
         :style="{ width: `calc(${splitRatio * 100}% - 5px)` }"
         @transfer-request="onTransfer"
         @counts-changed="(c) => (leftCount = c)"
+        @selection-changed="onLocalSelection"
         @path-changed="(p) => (leftPath = p)"
         @drag-move="onPaneDragMove"
         @drag-drop="onPaneDragDrop"
@@ -292,8 +309,16 @@ onUnmounted(() => {
       </span>
       <div class="ss-spacer" />
       <span>{{ t('sftp.binary') }}</span>
-      <span>{{ t('sftp.filesCount', { n: rightCount.files }) }}</span>
-      <span>{{ t('sftp.dirsCount', { n: rightCount.dirs }) }}</span>
+      <span class="ss-pane" :class="{ sel: leftSummary.selected }">
+        <span class="ss-name">{{ t('sftp.paneLocal') }}</span>
+        <span>{{ t(leftSummary.selected ? 'sftp.selDirs' : 'sftp.dirsCount', { n: leftSummary.dirs }) }}</span>
+        <span>{{ t(leftSummary.selected ? 'sftp.selFiles' : 'sftp.filesCount', { n: leftSummary.files }) }}</span>
+      </span>
+      <span class="ss-pane" :class="{ sel: rightSummary.selected }">
+        <span class="ss-name">{{ t('sftp.paneRemote') }}</span>
+        <span>{{ t(rightSummary.selected ? 'sftp.selDirs' : 'sftp.dirsCount', { n: rightSummary.dirs }) }}</span>
+        <span>{{ t(rightSummary.selected ? 'sftp.selFiles' : 'sftp.filesCount', { n: rightSummary.files }) }}</span>
+      </span>
       <span v-if="selSize !== null" class="ss-size">{{ formatBytes(selSize) }}</span>
     </div>
   </div>
@@ -365,5 +390,17 @@ onUnmounted(() => {
 .ss-size {
   color: var(--text-primary);
   font-weight: 600;
+}
+/* 窗格统计组：有选中时整体高亮为 accent，与"目录统计"区分 */
+.ss-pane {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ss-pane.sel {
+  color: var(--accent);
+}
+.ss-pane .ss-name {
+  color: var(--text-tertiary);
 }
 </style>

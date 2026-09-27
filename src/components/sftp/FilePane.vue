@@ -86,7 +86,8 @@ const propsLoading = ref(false)
 const deleteTargets = computed(() => dialogTargets.value.filter((x) => x.name !== '..'))
 
 function targetPath(entry: DirEntry): string {
-  return joinPath(path.value, entry.name)
+  // 盘符等特殊条目：显示名 ≠ 实际路径，直接用后端携带的真实路径
+  return entry.path ?? joinPath(path.value, entry.name)
 }
 
 function openRename(entry: DirEntry) {
@@ -226,6 +227,17 @@ const quickLinks = [
   { labelKey: 'sftp.quick.home', kind: 'home', icon: 'server' },
 ] as const
 
+/** 本机是否 Windows（决定此电脑视图形式：盘符列表 / 根目录） */
+const isWindows = /windows/i.test(navigator.userAgent)
+/** 磁盘分区列表（本地窗格侧栏快捷切换 + 此电脑视图，path 为真实跳转路径） */
+const drives = ref<DirEntry[]>([])
+
+/** 此电脑 / 根目录：Windows 进入盘符列表视图，Linux/macOS 直接到 / */
+function gotoThisPc() {
+  if (isWindows) load('')
+  else load('/')
+}
+
 /* ---------- 隐藏文件显示（仅远程面板） ---------- */
 
 const showHidden = ref(false)
@@ -245,6 +257,10 @@ const { gridStyle, resizing, startResize } = useColResize(
 
 /** 点击列表空白处（非文件行）时清除选中状态 */
 function onBodyClick(e: MouseEvent) {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
   if ((e.target as HTMLElement).closest('.ft-row')) return
   if (selected.value.size) {
     selected.value = new Set()
@@ -337,6 +353,10 @@ onMounted(async () => {
   if (props.side === 'local') {
     const desktop = await specialDir('desktop').catch(() => '')
     load(desktop || mockSpecialDirs.desktop || '')
+    // 磁盘分区列表（侧栏快捷切换 + 此电脑视图）
+    listLocalDir('')
+      .then((d) => (drives.value = d))
+      .catch(() => {})
   } else {
     load('/root', false)
   }
@@ -369,8 +389,18 @@ function goUp() {
     const norm = p.replace(/[\\/]+$/, '')
     if (!norm) return
     const idx = Math.max(norm.lastIndexOf('\\'), norm.lastIndexOf('/'))
-    if (idx < 0) load('')
-    else load(norm.slice(0, idx))
+    if (idx < 0) {
+      // 已是盘符根（C:）或其它顶级：进入此电脑视图
+      load('')
+    } else if (isWindows && /^[a-zA-Z]:$/.test(norm.slice(0, idx))) {
+      // C:\Users 上级是 C:，补全为 C:\（避免 Windows 盘符相对路径语义）
+      load(norm.slice(0, idx) + '\\')
+    } else if (!isWindows && idx === 0) {
+      // Linux/macOS：/home 上级是 /
+      load('/')
+    } else {
+      load(norm.slice(0, idx))
+    }
   }
 }
 function goBack() {
@@ -402,12 +432,20 @@ function onRowClick(e: MouseEvent, entry: DirEntry, idx: number) {
     suppressClick = false
     return
   }
+  // Shift+点击：从锚点（首个普通点击项）到当前行之间全部选中。
+  // idx 是显示顺序（sortedEntries）中的下标，范围必须按同一顺序计算；
+  // 锚点不随 shift+点击移动，连续扩展始终以首个点击项为基准。
   if (e.shiftKey && lastSelected.value) {
-    const start = entries.value.findIndex((x) => x.name === lastSelected.value)
-    const range = entries.value.slice(Math.min(start, idx), Math.max(start, idx) + 1)
-    if (!e.ctrlKey) selected.value = new Set()
-    range.forEach((x) => selected.value.add(x.name))
-  } else if (e.ctrlKey) {
+    const start = sortedEntries.value.findIndex((x) => x.name === lastSelected.value)
+    if (start >= 0) {
+      const range = sortedEntries.value.slice(Math.min(start, idx), Math.max(start, idx) + 1)
+      const next = e.ctrlKey ? new Set(selected.value) : new Set<string>()
+      range.forEach((x) => next.add(x.name))
+      selected.value = next
+      return
+    }
+  }
+  if (e.ctrlKey) {
     const next = new Set(selected.value)
     if (next.has(entry.name)) next.delete(entry.name)
     else next.add(entry.name)
@@ -511,9 +549,77 @@ function onRowDragUp(e: MouseEvent) {
   }
 }
 
+/* ---------- 空白处框选（rubber band）----------
+ * 在列表空白区按住左键拖动画框，框住的行全部选中；Ctrl+拖动在已有选择上追加。
+ * 行内的左键拖拽仍走上方"行拖拽（文件搬运）"逻辑，二者互不干扰。 */
+
+const marquee = ref<{ left: number; top: number; width: number; height: number } | null>(null)
+let mqBase: Set<string> | null = null
+let mqStartX = 0
+let mqStartY = 0
+let mqActive = false
+
+function onBodyMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  if ((e.target as HTMLElement).closest('.ft-row')) return
+  const el = e.currentTarget as HTMLElement
+  // 点在滚动条上不启动框选
+  if (e.offsetX > el.clientWidth || e.offsetY > el.clientHeight) return
+  mqBase = e.ctrlKey ? new Set(selected.value) : null
+  mqStartX = e.clientX
+  mqStartY = e.clientY
+  mqActive = false
+  document.addEventListener('mousemove', onMarqueeMove)
+  document.addEventListener('mouseup', onMarqueeUp)
+}
+
+function onMarqueeMove(e: MouseEvent) {
+  if (!mqActive && Math.abs(e.clientX - mqStartX) + Math.abs(e.clientY - mqStartY) < 5) return
+  if (!mqActive) {
+    mqActive = true
+    document.body.style.userSelect = 'none'
+  }
+  const left = Math.min(mqStartX, e.clientX)
+  const top = Math.min(mqStartY, e.clientY)
+  marquee.value = { left, top, width: Math.abs(e.clientX - mqStartX), height: Math.abs(e.clientY - mqStartY) }
+  // 视口坐标与各行矩形求交；DOM 行顺序与 sortedEntries 一致
+  const mqR = left + marquee.value.width
+  const mqB = top + marquee.value.height
+  const next = mqBase ? new Set(mqBase) : new Set<string>()
+  const rows = bodyEl.value ? (Array.from(bodyEl.value.children) as HTMLElement[]) : []
+  let lastHit = ''
+  rows.forEach((row, i) => {
+    if (!row.classList.contains('ft-row')) return
+    const r = row.getBoundingClientRect()
+    if (r.bottom <= top || r.top >= mqB || r.right <= left || r.left >= mqR) return
+    const hit = sortedEntries.value[i]
+    if (!hit || hit.name === '..') return
+    next.add(hit.name)
+    lastHit = hit.name
+  })
+  selected.value = next
+  if (lastHit) lastSelected.value = lastHit
+}
+
+function onMarqueeUp() {
+  document.removeEventListener('mousemove', onMarqueeMove)
+  document.removeEventListener('mouseup', onMarqueeUp)
+  document.body.style.userSelect = ''
+  marquee.value = null
+  const was = mqActive
+  mqActive = false
+  mqBase = null
+  if (was) {
+    // 吞掉 mouseup 后落在空白处的 click，避免 onBodyClick 清掉刚框选的结果
+    suppressClick = true
+    setTimeout(() => {
+      suppressClick = false
+    }, 0)
+  }
+}
+
 /** 系统外部文件拖入（仅浏览器预览模式；tauri 下由 SftpView 经 Tauri 事件处理） */
-function onDrop(e: DragEvent) {
-  dragOver.value = false
+function onDrop(e: DragEvent) {  dragOver.value = false
   e.preventDefault()
   const files = Array.from(e.dataTransfer?.files ?? [])
   if (!files.length) return
@@ -529,6 +635,8 @@ function onDrop(e: DragEvent) {
 onUnmounted(() => {
   document.removeEventListener('mousemove', onRowDragMove)
   document.removeEventListener('mouseup', onRowDragUp)
+  document.removeEventListener('mousemove', onMarqueeMove)
+  document.removeEventListener('mouseup', onMarqueeUp)
   document.body.style.userSelect = ''
 })
 
@@ -541,6 +649,12 @@ function onPaneKeydown(e: KeyboardEvent) {
     deleteSelection()
     return
   }
+  // Backspace 退回上一级：keydown 挂在每个窗格根元素上，焦点在哪个窗格就退哪个
+  if (e.key === 'Backspace') {
+    e.preventDefault()
+    goUp()
+    return
+  }
   // 打印字符键：按名称前缀定位条目（资源管理器式），Ctrl/Alt/Meta 组合与输入法组合中不拦截
   if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing && e.key.length === 1 && e.key !== ' ') {
     e.preventDefault()
@@ -549,7 +663,8 @@ function onPaneKeydown(e: KeyboardEvent) {
 }
 
 function deleteSelection() {
-  const targets = entries.value.filter((x) => selected.value.has(x.name) && x.name !== '..')
+  // 排除 '..' 与磁盘根（盘符不可删除，后端亦拒绝）
+  const targets = entries.value.filter((x) => selected.value.has(x.name) && x.name !== '..' && !x.path)
   if (!targets.length || dialog.value) return
   dialogTargets.value = targets
   dialog.value = 'delete'
@@ -624,6 +739,8 @@ function rowContextMenu(e: MouseEvent, entry: DirEntry) {
   const targets = entries.value.filter((x) => selected.value.has(x.name))
   const realTargets = targets.length ? targets : [entry]
   const isDotDot = entry.name === '..'
+  const isDrive = !!entry.path
+  const hasDrive = realTargets.some((x) => !!x.path)
   showContextMenu(e, [
     // 在线编辑：仅远程窗格的文件条目
     ...(props.side === 'remote' && entry.kind === 'file' && !isDotDot
@@ -632,21 +749,21 @@ function rowContextMenu(e: MouseEvent, entry: DirEntry) {
     {
       label: props.side === 'remote' ? t('sftp.download') : t('sftp.upload'),
       icon: props.side === 'remote' ? 'download' : 'upload',
-      disabled: realTargets.every((x) => x.name === '..'),
+      disabled: realTargets.every((x) => x.name === '..') || hasDrive,
       onClick: () => emit('transfer-request', { entries: realTargets, from: props.side, fromPath: path.value }),
     },
     { separator: true },
     {
       label: t('sftp.rename'),
       icon: 'edit',
-      disabled: isDotDot,
+      disabled: isDotDot || isDrive,
       onClick: () => openRename(entry),
     },
     {
       label: t('sftp.delete'),
       icon: 'trash',
       danger: true,
-      disabled: isDotDot,
+      disabled: isDotDot || isDrive,
       onClick: () => openDelete(entry),
     },
     ...(props.side === 'remote'
@@ -852,7 +969,8 @@ async function openEntry(entry: DirEntry) {
     return
   }
   if (entry.kind === 'dir') {
-    load(joinPath(path.value, entry.name))
+    // 盘符等特殊条目（display name ≠ 真实路径）走 entry.path
+    load(targetPath(entry))
     return
   }
   if (!isTauri) {
@@ -988,6 +1106,18 @@ defineExpose({
     <div class="pane-body">
       <div v-if="side === 'local'" class="quick-links">
         <div
+          class="quick-link"
+          :title="isWindows ? t('sftp.thisPC') : t('sftp.rootDir')"
+          @click="gotoThisPc"
+        >
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="10" cy="5.2" rx="6.6" ry="2.6" />
+            <path d="M3.4 5.2v9.6c0 1.44 2.95 2.6 6.6 2.6s6.6-1.16 6.6-2.6V5.2M3.4 10c0 1.44 2.95 2.6 6.6 2.6s6.6-1.16 6.6-2.6" />
+          </svg>
+          <span>{{ isWindows ? t('sftp.thisPC') : t('sftp.rootDir') }}</span>
+        </div>
+        <div class="ql-sep" />
+        <div
           v-for="ql in quickLinks"
           :key="ql.kind"
           class="quick-link"
@@ -1003,6 +1133,22 @@ defineExpose({
           </svg>
           <span>{{ t(ql.labelKey) }}</span>
         </div>
+        <template v-if="isWindows && drives.length">
+          <div class="ql-sep" />
+          <div
+            v-for="d in drives"
+            :key="d.path"
+            class="quick-link"
+            :title="`${d.name} — ${d.path}`"
+            @click="load(d.path ?? d.name)"
+          >
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="10" cy="5.2" rx="6.6" ry="2.6" />
+              <path d="M3.4 5.2v9.6c0 1.44 2.95 2.6 6.6 2.6s6.6-1.16 6.6-2.6V5.2M3.4 10c0 1.44 2.95 2.6 6.6 2.6s6.6-1.16 6.6-2.6" />
+            </svg>
+            <span>{{ d.path ?? d.name }}</span>
+          </div>
+        </template>
       </div>
 
       <div class="file-table-wrap">
@@ -1024,7 +1170,7 @@ defineExpose({
             </span>
             <span v-if="side === 'remote'" class="col-attrs">{{ t('sftp.colAttrs') }}</span>
           </div>
-          <div ref="bodyEl" class="ft-body" @click="onBodyClick">
+          <div ref="bodyEl" class="ft-body" @click="onBodyClick" @mousedown="onBodyMouseDown">
             <div
               v-for="(entry, idx) in sortedEntries"
               :key="entry.name"
@@ -1057,6 +1203,9 @@ defineExpose({
     </div>
 
     <div v-if="loading" class="pane-loading">{{ t('sftp.loading') }}</div>
+
+    <!-- 空白处框选矩形 -->
+    <div v-if="marquee" class="marquee" :style="{ left: marquee.left + 'px', top: marquee.top + 'px', width: marquee.width + 'px', height: marquee.height + 'px' }" />
 
     <!-- 重命名 / 新建文件夹 -->
     <FDialog
@@ -1357,6 +1506,16 @@ defineExpose({
   color: var(--accent);
   flex: none;
 }
+.quick-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ql-sep {
+  height: 1px;
+  background: var(--stroke-divider);
+  margin: 4px 2px;
+  flex: none;
+}
 .file-table-wrap {
   flex: 1;
   min-width: 0;
@@ -1480,6 +1639,15 @@ defineExpose({
   border: 1px solid var(--stroke-card);
   border-radius: var(--radius-sm);
   padding: 2px 8px;
+}
+/* 空白处框选矩形（视口坐标，pointer-events 穿透） */
+.marquee {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 2px;
 }
 .op-dialog-body {
   font-size: 13px;
