@@ -39,7 +39,7 @@ function formatJson(text: string, indentUnit: string): string {
 
 /* ---------- XML ----------
  * 逐 token 扫描（注释/CDATA/PI/DOCTYPE/开/闭/自闭合/文本），
- * 开标签后紧跟短文本+同名闭标签时保持单行，属性区不重排。 */
+ * "一对开闭标签+文本（含空内容）"保持单行，属性区不重排。 */
 
 interface XmlToken {
   kind: 'open' | 'close' | 'self' | 'text' | 'comment' | 'cdata' | 'pi' | 'doctype'
@@ -47,7 +47,8 @@ interface XmlToken {
   text: string
 }
 
-const OPEN_TAG_RE = /<(\/?)([A-Za-z_][\w:.-]*)((?:"[^"]*"|'[^']*'|[^"'>])*?)(\/?)>/
+// sticky 标志：exec 只在 lastIndex 处尝试匹配，避免回退到文档开头找首个标签
+const OPEN_TAG_RE = /<(\/?)([A-Za-z_][\w:.-]*)((?:"[^"]*"|'[^']*'|[^"'>])*?)(\/?)>/y
 
 function scanXml(src: string): XmlToken[] {
   const tokens: XmlToken[] = []
@@ -127,11 +128,16 @@ function formatXml(src: string, indentUnit: string): string {
         break
       }
       case 'open': {
-        // <a>text</a> 短文本保持单行
-        const text = tokens[i + 1]
-        const close = tokens[i + 2]
-        if (text?.kind === 'text' && text.text.trim() && close?.kind === 'close' && close.name === t.name) {
-          out.push(indentUnit.repeat(depth) + t.text + text.text.trim() + close.text)
+        // "一对标签"保持单行：<a></a>（无内容）或 <a>text</a>（中间只有文本）
+        const next = tokens[i + 1]
+        const after = tokens[i + 2]
+        if (next?.kind === 'close' && next.name === t.name) {
+          out.push(indentUnit.repeat(depth) + t.text + next.text)
+          i += 1
+          break
+        }
+        if (next?.kind === 'text' && after?.kind === 'close' && after.name === t.name) {
+          out.push(indentUnit.repeat(depth) + t.text + next.text.trim().replace(/\s+/g, ' ') + after.text)
           i += 2
           break
         }

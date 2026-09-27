@@ -122,7 +122,7 @@ export const fluentHighlight = syntaxHighlighting(
     { tag: [t.function(t.variableName), t.function(t.propertyName), t.macroName], color: 'var(--cm-function)' },
     { tag: [t.typeName, t.className, t.namespace, t.self], color: 'var(--cm-type)' },
     { tag: [t.propertyName, t.definition(t.propertyName)], color: 'var(--cm-property)' },
-    { tag: [t.variableName, t.definition(t.variableName), t.local(t.variableName)], color: 'var(--cm-variable)' },
+    { tag: [t.variableName, t.definition(t.variableName), t.local(t.variableName), t.standard(t.variableName)], color: 'var(--cm-variable)' },
     { tag: [t.tagName], color: 'var(--cm-tag)' },
     { tag: [t.attributeName], color: 'var(--cm-attr)' },
     { tag: [t.attributeValue], color: 'var(--cm-string)' },

@@ -23,6 +23,7 @@ import { c, cpp, java, csharp, objectiveC } from '@codemirror/legacy-modes/mode/
 import { go } from '@codemirror/legacy-modes/mode/go'
 import { rust } from '@codemirror/legacy-modes/mode/rust'
 import { standardSQL } from '@codemirror/legacy-modes/mode/sql'
+import { bat } from './batMode'
 
 export interface EditorLang {
   /** 语言 id（同时用于格式化判定：json/xml/yaml） */
@@ -78,6 +79,7 @@ const LANGS: Record<string, EditorLang> = {
   objc: { id: 'objc', label: 'Objective-C', indent: SP4, support: () => StreamLanguage.define(objectiveC) },
   go: { id: 'go', label: 'Go', indent: SP2, support: () => StreamLanguage.define(go) },
   rust: { id: 'rust', label: 'Rust', indent: SP4, support: () => StreamLanguage.define(rust) },
+  bat: { id: 'bat', label: 'Batch', indent: SP4, support: () => bat },
 }
 
 /** 扩展名 → 语言 */
@@ -141,6 +143,8 @@ const EXT_LANG: Record<string, EditorLang> = {
   m: LANGS.objc!,
   go: LANGS.go!,
   rs: LANGS.rust!,
+  bat: LANGS.bat!,
+  cmd: LANGS.bat!,
 }
 
 /** 特殊文件名（无扩展名或以点开头的配置文件）→ 语言 */

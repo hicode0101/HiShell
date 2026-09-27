@@ -99,6 +99,7 @@ const mockRemoteRoot: Record<string, DirEntry[]> = {
     { name: 'cron_task.py', kind: 'file', size: 1_248, mtime: now - 6 * day, attrs: '-rw-r--r--' },
     { name: 'router.php', kind: 'file', size: 1_588, mtime: now - 9 * day, attrs: '-rw-r--r--' },
     { name: 'site.xml', kind: 'file', size: 1_112, mtime: now - 11 * day, attrs: '-rw-r--r--' },
+    { name: 'backup.bat', kind: 'file', size: 986, mtime: now - 13 * day, attrs: '-rw-r--r--' },
     { name: '.bashrc', kind: 'file', size: 3_096, mtime: now - 200 * day, attrs: '-rw-r--r--' },
     { name: 'app.log', kind: 'file', size: 84_233_216, mtime: now - 0.2 * day, attrs: '-rw-r--r--' },
     { name: 'backup-20260918.tar.gz', kind: 'file', size: 1_073_741_824, mtime: now - 2 * day, attrs: '-rw-------' },
@@ -243,6 +244,33 @@ class Router
     </servers>
     <log level="info" path="/var/log/hishell.log"/>
 </configuration>
+`,
+  bat: `@echo off
+setlocal enabledelayedexpansion
+rem 备份站点目录并压缩（示例脚本）
+
+set SRC=C:\\www\\hishell
+set DEST=D:\\backup\\%date:~0,10%
+set KEEP=7
+
+if not exist "%DEST%" mkdir "%DEST%"
+
+:loop
+for %%i in (%SRC%\\*.log) do (
+    echo copying %%i ...
+    copy /y "%%i" "%DEST%" >nul
+)
+
+if %errorlevel% equ 0 (
+    echo backup ok
+) else (
+    echo backup failed & goto :done
+)
+
+:: 清理过期备份，保留最近 %KEEP% 份
+forfiles /p "%DEST%" /d -%KEEP% /cmd del /q 2>nul
+echo done, exit code %errorlevel%
+pause
 `,
 }
 
