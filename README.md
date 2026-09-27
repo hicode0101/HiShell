@@ -120,11 +120,14 @@ npm run dev
 # 打开 http://localhost:5173
 ```
 
+Windows 下也可以**双击 `preview.bat`**：自动启动预览服务并打开浏览器（端口已占用时直接复用）。不编译 Rust、秒级启动，前端改动即时热更新；会话 / 终端 / SFTP / 文件编辑均为内置模拟数据，适合界面与交互的日常预览测试。需要真实 SSH 连接时再用 `build.bat dev`（Rust 增量编译 + 前端热更新）。
+
 ### 本地构建（Windows）
 
 双击或在命令行运行 `build.bat`：
 
 ```bat
+build.bat dev       :: tauri dev 运行完整应用（Rust 增量编译 + 前端热更新，日常调试推荐）
 build.bat           :: release 完整打包（NSIS+MSI 安装包，首次较慢）
 build.bat debug     :: debug 打包（不优化，编译快，适合本地测试）
 build.bat exe       :: 只出绿色版 exe（跳过安装包，最快，增量约 15 秒）

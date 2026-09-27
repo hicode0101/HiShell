@@ -4,12 +4,15 @@ rem ============================================================
 rem  HiShell local Windows build script
 rem  Usage:
 rem    build.bat           release bundle (optimized, slow first time)
+rem    build.bat dev       tauri dev (run app with hot reload, Rust incremental)
 rem    build.bat debug     debug bundle (fast compile, for testing)
 rem    build.bat exe       debug exe only, skip installer bundling (fastest)
 rem    build.bat check     typecheck + cargo check only
 rem  Artifacts:
 rem    release: src-tauri\target\release\bundle\nsis\*.exe / msi\*.msi
 rem    debug:   src-tauri\target\debug\bundle\nsis\*.exe
+rem  Tips:
+rem    UI preview without Rust compile: preview.bat (browser mock mode)
 rem ============================================================
 
 cd /d "%~dp0"
@@ -54,12 +57,25 @@ if not exist node_modules (
 )
 
 if /i "%MODE%"=="check" goto :check
+if /i "%MODE%"=="dev" goto :tauri_dev
 if /i "%MODE%"=="exe" goto :build_exe
 if /i "%MODE%"=="debug" goto :build_debug
 if /i "%MODE%"=="release" goto :build_release
 
-echo [ERROR] unknown mode "%MODE%", expected: release / debug / exe / check
+echo [ERROR] unknown mode "%MODE%", expected: release / dev / debug / exe / check
 exit /b 1
+
+:tauri_dev
+echo [dev] tauri dev ^(Rust incremental compile + frontend HMR; no Rust rebuild for UI-only changes^)
+rem vite strictPort fails when 5173 is occupied by the browser preview (preview.bat)
+netstat -ano | findstr /c:":5173 " | findstr /i "LISTENING" >nul 2>nul
+if not errorlevel 1 (
+    echo [WARN] Port 5173 is busy - preview.bat ^(browser preview^) is probably running.
+    echo        Close it first, then run "build.bat dev" again.
+    exit /b 1
+)
+call npm run tauri dev
+goto :eof
 
 :build_exe
 echo [build] tauri build --debug --no-bundle ^(exe only, fastest^)

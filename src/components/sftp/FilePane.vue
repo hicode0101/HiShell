@@ -579,8 +579,10 @@ function typeaheadChar(c: string) {
     const entry = candidates[idx]!
     selected.value = new Set([entry.name])
     lastSelected.value = entry.name
-    // .ft-body 的子元素顺序与 sortedEntries 一致，按索引滚动到该行
-    const el = bodyEl.value?.children[idx] as HTMLElement | undefined
+    // DOM 子元素顺序与 sortedEntries 一致（含列表头部的 '..' 伪行），
+    // candidates 已排除 '..'，须按名称换算真实行索引后再滚动
+    const domIdx = sortedEntries.value.findIndex((x) => x.name === entry.name)
+    const el = bodyEl.value?.children[domIdx] as HTMLElement | undefined
     el?.scrollIntoView({ block: 'nearest' })
   }
 
