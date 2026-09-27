@@ -5,7 +5,8 @@
  * - 远程：真实 SFTP（sftp_list），连接前显示提示
  * - 拖拽：行可拖拽 → 落到对侧窗格入传输队列；系统文件拖入由 SftpView 经
  *   Tauri drag-drop 事件处理（真实路径），浏览器预览模式仍走 HTML5 files
- * - 右键：下载/上传、重命名、删除、属性、新建文件夹、双击打开（远程文件先下载到临时目录）
+ * - 右键：下载/上传、编辑、重命名、删除、属性、新建文件夹、双击打开（远程文件先下载到临时目录）
+ * - 键盘：Delete 删除选中项；打印字符键入定位（type-ahead），按当前排序前缀匹配并滚动选中
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { DirEntry, SessionTab } from '../../api/types'
@@ -291,6 +292,7 @@ async function load(p: string, pushBack = true) {
   if (!navAllowed()) return
   loading.value = true
   selected.value = new Set()
+  typeaheadBuf = ''
   try {
     const list =
       props.side === 'local'
@@ -528,13 +530,19 @@ onUnmounted(() => {
   document.body.style.userSelect = ''
 })
 
-/* ---------- 键盘：Delete 删除选中项（带确认对话框） ---------- */
+/* ---------- 键盘：Delete 删除选中项 + 字母快速定位（type-ahead） ---------- */
 
 function onPaneKeydown(e: KeyboardEvent) {
   if ((e.target as HTMLElement).closest('input, textarea, [contenteditable]')) return
   if (e.key === 'Delete') {
     e.preventDefault()
     deleteSelection()
+    return
+  }
+  // 打印字符键：按名称前缀定位条目（资源管理器式），Ctrl/Alt/Meta 组合与输入法组合中不拦截
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing && e.key.length === 1 && e.key !== ' ') {
+    e.preventDefault()
+    typeaheadChar(e.key)
   }
 }
 
@@ -543,6 +551,66 @@ function deleteSelection() {
   if (!targets.length || dialog.value) return
   dialogTargets.value = targets
   dialog.value = 'delete'
+}
+
+/* ---------- 键入定位（type-ahead）----------
+ * 在窗格获得焦点时按可打印字符检索：按当前排序在显示条目（不含 '..'）中
+ * 前缀匹配文件/文件夹名，单选命中项并滚动到可视位置。
+ * - 1 秒内连续按键累积前缀（"d" → "do" → "doc"）
+ * - 同字符快速连按：在以该字符开头的条目间向下循环
+ * - 累积无匹配则退回用新字符重新匹配，仍无匹配清空缓冲 */
+
+const TYPEAHEAD_TIMEOUT = 1000
+let typeaheadBuf = ''
+let typeaheadAt = 0
+const bodyEl = ref<HTMLElement>()
+
+function typeaheadChar(c: string) {
+  const now = Date.now()
+  if (now - typeaheadAt > TYPEAHEAD_TIMEOUT) typeaheadBuf = ''
+  typeaheadAt = now
+  const lower = (s: string) => s.toLocaleLowerCase()
+  // 当前显示顺序（已按用户排序），排除 '..' 伪条目
+  const candidates = sortedEntries.value.filter((x) => x.name !== '..')
+  if (!candidates.length) return
+
+  const selectAt = (idx: number, buf: string) => {
+    typeaheadBuf = buf
+    const entry = candidates[idx]!
+    selected.value = new Set([entry.name])
+    lastSelected.value = entry.name
+    // .ft-body 的子元素顺序与 sortedEntries 一致，按索引滚动到该行
+    const el = bodyEl.value?.children[idx] as HTMLElement | undefined
+    el?.scrollIntoView({ block: 'nearest' })
+  }
+
+  const combined = typeaheadBuf + c
+  // 1) 累积前缀匹配（"d" → "do" → "doc"）
+  const combinedIdx = candidates.findIndex((x) => lower(x.name).startsWith(lower(combined)))
+  if (combinedIdx >= 0) {
+    selectAt(combinedIdx, combined)
+    return
+  }
+  // 2) 同字符连按：从当前选中处向下循环到下一个以该字符开头的条目（支持环绕）
+  if (typeaheadBuf.length === 1 && typeaheadBuf.toLowerCase() === c.toLowerCase()) {
+    const n = candidates.length
+    const start = candidates.findIndex((x) => selected.value.has(x.name))
+    for (let k = 1; k <= n; k++) {
+      const idx = (start + k) % n
+      if (lower(candidates[idx]!.name).startsWith(lower(c))) {
+        selectAt(idx, c)
+        return
+      }
+    }
+  }
+  // 3) 累积无匹配：退回单字符重新开始
+  const freshIdx = candidates.findIndex((x) => lower(x.name).startsWith(lower(c)))
+  if (freshIdx >= 0) {
+    selectAt(freshIdx, c)
+    return
+  }
+  // 4) 无匹配：清空缓冲等待下一次输入
+  typeaheadBuf = ''
 }
 
 /* ---------- 右键菜单 ---------- */
@@ -894,7 +962,7 @@ defineExpose({
             </span>
             <span v-if="side === 'remote'" class="col-attrs">{{ t('sftp.colAttrs') }}</span>
           </div>
-          <div class="ft-body" @click="onBodyClick">
+          <div ref="bodyEl" class="ft-body" @click="onBodyClick">
             <div
               v-for="(entry, idx) in sortedEntries"
               :key="entry.name"
