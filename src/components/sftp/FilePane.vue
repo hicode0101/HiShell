@@ -32,6 +32,7 @@ import { useTransfersStore } from '../../stores/transfers'
 import { formatBytes, formatTime, fileKindLabel } from '../../utils/format'
 import { t } from '../../i18n'
 import { FButton, FTextBox, FDialog, showContextMenu, toast, useColResize } from '../../ui'
+import FileEditDialog from './FileEditDialog.vue'
 
 const props = defineProps<{
   side: 'local' | 'remote'
@@ -552,6 +553,10 @@ function rowContextMenu(e: MouseEvent, entry: DirEntry) {
   const realTargets = targets.length ? targets : [entry]
   const isDotDot = entry.name === '..'
   showContextMenu(e, [
+    // 在线编辑：仅远程窗格的文件条目
+    ...(props.side === 'remote' && entry.kind === 'file' && !isDotDot
+      ? [{ label: t('sftp.edit'), icon: 'code', onClick: () => openEdit(entry) }]
+      : []),
     {
       label: props.side === 'remote' ? t('sftp.download') : t('sftp.upload'),
       icon: props.side === 'remote' ? 'download' : 'upload',
@@ -680,13 +685,29 @@ async function openChmod(entry: DirEntry) {
     permOctal.value = octalFromAttrs(entry.attrs)
   } else {
     try {
-      const st = await sftpStat(props.session.sid, permPath.value)
+      const st = await sftpStat(props.session!.sid!, permPath.value)
       permOctal.value = octalFromAttrs(st?.attrs)
     } catch {
       permOctal.value = '644'
     }
   }
   permDialog.value = true
+}
+
+/* ---------- 在线编辑远程文件（仅远程文件，≤10MB） ---------- */
+
+const EDIT_MAX_BYTES = 10 * 1024 * 1024
+const editDialogOpen = ref(false)
+const editFile = ref<{ name: string; path: string; size: number } | null>(null)
+
+function openEdit(entry: DirEntry) {
+  if (!ensureRemote()) return
+  if (isTauri && entry.size > EDIT_MAX_BYTES) {
+    toast(t('sftp.editor.tooLarge'), 'error')
+    return
+  }
+  editFile.value = { name: entry.name, path: targetPath(entry), size: entry.size }
+  editDialogOpen.value = true
 }
 
 async function applyChmod() {
@@ -731,7 +752,7 @@ async function openEntry(entry: DirEntry) {
     fsMkdir(targetDir).catch(() => {})
     const localPath = `${targetDir}\\${entry.name}`
     const id = await transfers.submit({
-      sid: props.session.sid,
+      sid: props.session!.sid!,
       name: entry.name,
       isDir: false,
       direction: 'download',
@@ -1023,6 +1044,15 @@ defineExpose({
         <FButton variant="accent" @click="dialog = null">{{ t('common.close') }}</FButton>
       </template>
     </FDialog>
+
+    <!-- 在线编辑远程文件（毛玻璃/可缩放，语法高亮） -->
+    <FileEditDialog
+      v-if="side === 'remote'"
+      v-model:open="editDialogOpen"
+      :session="props.session"
+      :file="editFile"
+      @saved="reload()"
+    />
 
     <!-- 行拖拽跟随 ghost（鼠标模拟拖拽） -->
     <div

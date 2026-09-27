@@ -14,6 +14,21 @@ export interface DirEntry {
   attrs?: string
 }
 
+/** 远程文本文件内容（后端已按检测到的编码解码为 UTF-8，行尾统一 \n） */
+export interface RemoteFileContent {
+  text: string
+  /** 检测到的编码名（如 UTF-8 / GBK / Shift_JIS），保存时按此写回 */
+  encoding: string
+  /** 原文件是否带 BOM */
+  bom: boolean
+  /** 原文件行尾是否为 CRLF（保存时还原） */
+  crlf: boolean
+  /** 解码时是否有无法映射的字节（保存将丢失原字节） */
+  lossy: boolean
+  /** 原始字节数 */
+  size: number
+}
+
 export type SpecialDirKind =
   | 'home'
   | 'desktop'

@@ -4,7 +4,7 @@
  * - 浏览器环境：mock 实现（本地文件树/模拟传输），便于 UI 预览
  */
 import { isTauri, tauriInvoke } from './adapter'
-import type { DirEntry, SshProfile, ForwardRule } from './types'
+import type { DirEntry, RemoteFileContent, SshProfile, ForwardRule } from './types'
 import pkg from '../../package.json'
 
 /* ==================== 事件订阅 ==================== */
@@ -305,6 +305,26 @@ export async function sftpStat(sid: number, path: string): Promise<RemoteStat> {
   return tauriInvoke<RemoteStat>('sftp_stat', { sid, path })
 }
 
+/* ---------- 远程文本文件在线编辑 ---------- */
+
+export async function readRemoteFile(sid: number | undefined, path: string): Promise<RemoteFileContent> {
+  if (isTauri) return tauriInvoke<RemoteFileContent>('sftp_read_file', { sid, path })
+  return mockReadRemoteFile(path)
+}
+
+/** 保存远程文本文件（按读取时检测到的编码/换行/BOM 写回），返回写入字节数 */
+export async function writeRemoteFile(
+  sid: number | undefined,
+  path: string,
+  content: string,
+  encoding: string,
+  bom: boolean,
+  crlf: boolean,
+): Promise<number> {
+  if (isTauri) return tauriInvoke<number>('sftp_write_file', { sid, path, content, encoding, bom, crlf })
+  return content.length
+}
+
 /* ==================== 传输 ==================== */
 
 export interface EnqueueItem {
@@ -530,7 +550,7 @@ export {
   mockProfileStore,
 } from './mock'
 
-import { mockListDir, mockListRemoteDir, mockSpecialDirs } from './mock'
+import { mockListDir, mockListRemoteDir, mockReadRemoteFile, mockSpecialDirs } from './mock'
 
 /** 远程目录：tauri 且会话连接时走真实 SFTP，否则 mock */
 export async function listRemoteDir(sid: number | undefined, path: string, connected: boolean): Promise<DirEntry[]> {

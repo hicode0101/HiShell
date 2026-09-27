@@ -1,6 +1,6 @@
 /** 浏览器预览模式的 mock 数据与内存 profile 存储 */
 import { sleep } from './adapter'
-import type { DirEntry, SshProfile } from './types'
+import type { DirEntry, RemoteFileContent, SshProfile } from './types'
 import { defaultProfile, type ProxyConfig } from './types'
 
 export { sleep }
@@ -82,6 +82,12 @@ const mockRemoteRoot: Record<string, DirEntry[]> = {
     { name: '..', kind: 'dir', size: 4096, mtime: now - 30 * day },
     { name: 'cert', kind: 'dir', size: 4096, mtime: now - 38 * day, attrs: 'drwxr-xr-x' },
     { name: 'docker-compose.yml', kind: 'file', size: 1_842, mtime: now - 5 * day, attrs: '-rw-r--r--' },
+    { name: 'nginx.conf', kind: 'file', size: 2_464, mtime: now - 12 * day, attrs: '-rw-r--r--' },
+    { name: 'deploy.sh', kind: 'file', size: 986, mtime: now - 3 * day, attrs: '-rwxr-xr-x' },
+    { name: 'config.json', kind: 'file', size: 642, mtime: now - 2 * day, attrs: '-rw-r--r--' },
+    { name: 'cron_task.py', kind: 'file', size: 1_248, mtime: now - 6 * day, attrs: '-rw-r--r--' },
+    { name: 'router.php', kind: 'file', size: 1_588, mtime: now - 9 * day, attrs: '-rw-r--r--' },
+    { name: 'site.xml', kind: 'file', size: 1_112, mtime: now - 11 * day, attrs: '-rw-r--r--' },
     { name: '.bashrc', kind: 'file', size: 3_096, mtime: now - 200 * day, attrs: '-rw-r--r--' },
     { name: 'app.log', kind: 'file', size: 84_233_216, mtime: now - 0.2 * day, attrs: '-rw-r--r--' },
     { name: 'backup-20260918.tar.gz', kind: 'file', size: 1_073_741_824, mtime: now - 2 * day, attrs: '-rw-------' },
@@ -103,6 +109,140 @@ export async function mockListRemoteDir(path: string): Promise<DirEntry[]> {
       { name: 'readme.txt', kind: 'file', size: 1_233, mtime: now - day, attrs: '-rw-r--r--' },
     ]
   )
+}
+
+/* ---------- 远程文本文件内容（浏览器预览模式） ---------- */
+
+/** 按扩展名给出示例内容，便于浏览器预览编辑器（语法高亮/格式化） */
+const mockFileSamples: Record<string, string> = {
+  yml: `services:
+  web:
+    image: nginx:1.25
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./conf:/etc/nginx/conf.d
+    restart: always
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+`,
+  json: `{
+  "name": "hishell-agent",
+  "version": "1.0.2",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "timeout": 30000
+  },
+  "features": ["sftp", "terminal", "forward"],
+  "debug": false
+}
+`,
+  conf: `server {
+    listen       80;
+    server_name  example.com;
+
+    location / {
+        root   /var/www/html;
+        index  index.html index.htm;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080/;
+        proxy_set_header Host $host;
+    }
+}
+`,
+  sh: `#!/usr/bin/env bash
+# 一键部署脚本
+set -e
+
+APP_DIR="/opt/hishell"
+BACKUP_DIR="\${APP_DIR}/backup"
+
+echo "==> 备份旧版本"
+mkdir -p "\${BACKUP_DIR}"
+cp "\${APP_DIR}/app" "\${BACKUP_DIR}/app.$(date +%Y%m%d%H%M%S)"
+
+echo "==> 拉取最新构建"
+cd "\${APP_DIR}"
+git pull origin main
+
+echo "==> 重启服务"
+systemctl restart hishell.service
+echo "==> 完成"
+`,
+  py: `#!/usr/bin/env python3
+"""定时清理过期备份文件"""
+import os
+import time
+
+BACKUP_DIR = "/opt/hishell/backup"
+KEEP_DAYS = 7
+
+
+def clean_expired():
+    now = time.time()
+    for name in os.listdir(BACKUP_DIR):
+        path = os.path.join(BACKUP_DIR, name)
+        if os.path.isfile(path) and now - os.path.getmtime(path) > KEEP_DAYS * 86400:
+            print(f"remove {path}")
+            os.remove(path)
+
+
+if __name__ == "__main__":
+    clean_expired()
+`,
+  php: `<?php
+declare(strict_types=1);
+
+/** 简单路由：根据请求路径分发到对应控制器 */
+class Router
+{
+    private array $routes = [];
+
+    public function get(string $path, callable $handler): void
+    {
+        $this->routes['GET'][$path] = $handler;
+    }
+
+    public function dispatch(string $method, string $uri): void
+    {
+        $handler = $this->routes[$method][$uri] ?? null;
+        if ($handler === null) {
+            http_response_code(404);
+            echo json_encode(['error' => 'not found']);
+            return;
+        }
+        echo $handler();
+    }
+}
+`,
+  xml: `<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <servers>
+        <server id="1" region="cn-north">
+            <host>10.0.0.11</host>
+            <port>22</port>
+        </server>
+        <server id="2" region="cn-south">
+            <host>10.0.1.35</host>
+            <port>2222</port>
+        </server>
+    </servers>
+    <log level="info" path="/var/log/hishell.log"/>
+</configuration>
+`,
+}
+
+export async function mockReadRemoteFile(path: string): Promise<RemoteFileContent> {
+  await sleep(260)
+  const name = path.split('/').pop() || path
+  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : ''
+  const text = mockFileSamples[ext] ?? `# ${name}\n\n浏览器预览模式：示例文本内容。\n`
+  return { text, encoding: 'UTF-8', bom: false, crlf: /\r\n/.test(text), lossy: false, size: text.length }
 }
 
 /** 远程/本地列表统一入口（mock） */

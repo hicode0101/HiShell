@@ -54,6 +54,8 @@ pub fn run() {
             commands::sftp::sftp_stat,
             commands::sftp::sftp_exists,
             commands::sftp::sftp_mkdirs,
+            commands::sftp::sftp_read_file,
+            commands::sftp::sftp_write_file,
             commands::sftp::local_mkdirs,
             commands::transfers::transfer_enqueue,
             commands::transfers::transfer_pause,

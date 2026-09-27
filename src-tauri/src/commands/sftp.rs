@@ -251,3 +251,245 @@ pub async fn local_mkdirs(paths: Vec<String>) -> Result<(), String> {
     }
     Ok(())
 }
+
+/* ---------- 在线文本编辑（读/写远程文件内容） ---------- */
+
+/// 在线编辑的文件大小上限：10 MB
+const EDIT_MAX_SIZE: u64 = 10 * 1024 * 1024;
+/// 写回时的字节上限（编辑中粘贴可能使内容增长，放宽到 20 MB）
+const EDIT_WRITE_MAX: usize = 20 * 1024 * 1024;
+
+/// 远程文本文件内容（已解码为 UTF-8 文本，行尾统一为 \n）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFileContent {
+    pub text: String,
+    /// 检测到的编码名（WHATWG 标准名，如 UTF-8 / GBK / Shift_JIS）
+    pub encoding: String,
+    /// 原文件是否带 BOM
+    pub bom: bool,
+    /// 原文件行尾是否为 CRLF（保存时按此还原）
+    pub crlf: bool,
+    /// 解码时是否出现无法映射的字节（以替换符占位，保存将丢失原字节）
+    pub lossy: bool,
+    /// 原始字节数
+    pub size: u64,
+}
+
+/// 三级识别并解码：BOM → 严格 UTF-8 → chardetng 特征探测。
+/// 返回 (原始解码文本, 编码名, 是否带 BOM, 是否有不可映射字节)。
+fn detect_and_decode(bytes: &[u8]) -> (String, String, bool, bool) {
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        let (text, _, had_errors) = encoding_rs::UTF_8.decode(&bytes[3..]);
+        return (text.into_owned(), "UTF-8".into(), true, had_errors);
+    }
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        let (text, _, had_errors) = encoding_rs::UTF_16LE.decode(bytes);
+        return (text.into_owned(), "UTF-16LE".into(), true, had_errors);
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        let (text, _, had_errors) = encoding_rs::UTF_16BE.decode(bytes);
+        return (text.into_owned(), "UTF-16BE".into(), true, had_errors);
+    }
+    // 无 BOM 的 UTF-16：NUL 占比高时按 16 位解码。
+    // 必须放在严格 UTF-8 检查之前——NUL 是合法 UTF-8 字节，否则会被误判为带 NUL 的 UTF-8
+    let zeros = bytes.iter().filter(|&&b| b == 0).count();
+    if zeros * 8 > bytes.len() {
+        let enc = if bytes[0] == 0 { encoding_rs::UTF_16BE } else { encoding_rs::UTF_16LE };
+        let (text, _, had_errors) = enc.decode(bytes);
+        return (text.into_owned(), enc.name().to_string(), false, had_errors);
+    }
+    // 合法 UTF-8（含纯 ASCII）直接采用，避免特征探测误判
+    if std::str::from_utf8(bytes).is_ok() {
+        return (String::from_utf8_lossy(bytes).into_owned(), "UTF-8".into(), false, false);
+    }
+    let mut det = chardetng::EncodingDetector::new();
+    det.feed(bytes, true);
+    let enc = det.guess(None, true);
+    let (text, _, had_errors) = enc.decode(bytes);
+    (text.into_owned(), enc.name().to_string(), false, had_errors)
+}
+
+/// 文本按指定编码编码（CRLF 按需还原行尾；UTF-8/UTF-16 按需补 BOM）
+fn encode_content(text: &str, encoding: &str, bom: bool, crlf: bool) -> Result<Vec<u8>, String> {
+    let normalized = if crlf {
+        text.replace("\r\n", "\n").replace('\r', "\n").replace('\n', "\r\n")
+    } else {
+        text.replace("\r\n", "\n")
+    };
+    let Some(enc) = encoding_rs::Encoding::for_label(encoding.as_bytes()) else {
+        return Err(format!("未知编码: {encoding}"));
+    };
+    // encoding_rs 的 encode() 对 UTF-16 目标会回退输出 UTF-8（见其文档第二返回值），
+    // 这里手动打包 UTF-16 码元，避免把 UTF-16 文件写坏
+    let utf16le = if std::ptr::eq(enc, encoding_rs::UTF_16LE) {
+        Some(true)
+    } else if std::ptr::eq(enc, encoding_rs::UTF_16BE) {
+        Some(false)
+    } else {
+        None
+    };
+    let mut out: Vec<u8> = if let Some(le) = utf16le {
+        let mut v = Vec::with_capacity(normalized.len() * 2);
+        for unit in normalized.encode_utf16() {
+            let bytes = if le { unit.to_le_bytes() } else { unit.to_be_bytes() };
+            v.extend_from_slice(&bytes);
+        }
+        v
+    } else {
+        let (data, actual, _) = enc.encode(&normalized);
+        if !std::ptr::eq(actual, enc) {
+            return Err(format!("编码 {encoding} 不支持写回，已放弃保存"));
+        }
+        data.into_owned()
+    };
+    // encoding_rs 的 encode 不写 BOM：按原文件的 BOM 标记补回
+    if bom {
+        let prefix: &[u8] = if std::ptr::eq(enc, encoding_rs::UTF_8) {
+            &[0xEF, 0xBB, 0xBF]
+        } else if std::ptr::eq(enc, encoding_rs::UTF_16LE) {
+            &[0xFF, 0xFE]
+        } else if std::ptr::eq(enc, encoding_rs::UTF_16BE) {
+            &[0xFE, 0xFF]
+        } else {
+            &[]
+        };
+        if !prefix.is_empty() {
+            let mut with_bom = Vec::with_capacity(out.len() + prefix.len());
+            with_bom.extend_from_slice(prefix);
+            with_bom.append(&mut out);
+            out = with_bom;
+        }
+    }
+    Ok(out)
+}
+
+/// 读取远程文本文件内容（在线编辑用），自动识别编码/换行符
+#[tauri::command]
+pub async fn sftp_read_file(
+    sessions: tauri::State<'_, Sessions>,
+    sid: u32,
+    path: String,
+) -> Result<RemoteFileContent, String> {
+    let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
+    let sftp = ssh::get_sftp(&session).await.map_err(|e| e.to_string())?;
+    let meta = sftp.metadata(&path).await.map_err(|e| format!("读取文件属性失败: {e}"))?;
+    if meta.is_dir() {
+        return Err("无法编辑文件夹".into());
+    }
+    let size = meta.size.unwrap_or(0);
+    if size > EDIT_MAX_SIZE {
+        return Err(format!("文件过大（约 {} MB），不支持在线编辑（上限 10 MB）", size / 1024 / 1024));
+    }
+    use tokio::io::AsyncReadExt;
+    let mut file = sftp.open(&path).await.map_err(|e| format!("打开远程文件失败: {e}"))?;
+    let mut bytes: Vec<u8> = Vec::with_capacity(size.min(EDIT_MAX_SIZE) as usize + 1);
+    // take() 防御属性谎报/文件在读取期间被追加，避免内存失控
+    (&mut file).take(EDIT_MAX_SIZE + 1).read_to_end(&mut bytes).await
+        .map_err(|e| format!("读取远程文件失败: {e}"))?;
+    if bytes.len() as u64 > EDIT_MAX_SIZE {
+        return Err("文件过大，不支持在线编辑（上限 10 MB）".into());
+    }
+    let (raw_text, encoding, bom, lossy) = detect_and_decode(&bytes);
+    let crlf = raw_text.contains("\r\n");
+    let text = if crlf { raw_text.replace("\r\n", "\n").replace('\r', "\n") } else { raw_text };
+    Ok(RemoteFileContent { text, encoding, bom, crlf, lossy, size })
+}
+
+/// 保存远程文本文件（按读取时识别的编码/换行/BOM 写回），返回写入字节数
+#[tauri::command]
+pub async fn sftp_write_file(
+    sessions: tauri::State<'_, Sessions>,
+    sid: u32,
+    path: String,
+    content: String,
+    encoding: String,
+    bom: bool,
+    crlf: bool,
+) -> Result<u64, String> {
+    let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
+    let bytes = encode_content(&content, &encoding, bom, crlf)?;
+    if bytes.len() > EDIT_WRITE_MAX {
+        return Err("内容过大，保存失败（上限 20 MB）".into());
+    }
+    let sftp = ssh::get_sftp(&session).await.map_err(|e| e.to_string())?;
+    use russh_sftp::protocol::OpenFlags;
+    use tokio::io::AsyncWriteExt;
+    let mut remote = sftp
+        .open_with_flags(&path, OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE)
+        .await
+        .map_err(|e| format!("打开远程文件失败: {e}"))?;
+    remote.write_all(&bytes).await.map_err(|e| format!("写入远程文件失败: {e}"))?;
+    let _ = remote.shutdown().await;
+    Ok(bytes.len() as u64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_plain_utf8() {
+        let (text, enc, bom, lossy) = detect_and_decode("hello 世界".as_bytes());
+        assert_eq!(text, "hello 世界");
+        assert_eq!(enc, "UTF-8");
+        assert!(!bom && !lossy);
+    }
+
+    #[test]
+    fn detect_utf8_bom() {
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice("# 注释".as_bytes());
+        let (text, enc, bom, _) = detect_and_decode(&bytes);
+        assert_eq!(text, "# 注释");
+        assert_eq!(enc, "UTF-8");
+        assert!(bom);
+    }
+
+    #[test]
+    fn detect_utf16le_bom() {
+        // BOM + 无 BOM 两种形态都要能还原（UTF-16 字节手动打包）
+        let text = "server:\n  port: 22\n";
+        let mut le_bytes: Vec<u8> = Vec::new();
+        for unit in text.encode_utf16() {
+            le_bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        let mut with_bom = vec![0xFF, 0xFE];
+        with_bom.extend_from_slice(&le_bytes);
+        for bytes in [&with_bom, &le_bytes] {
+            let (decoded, enc, _, _) = detect_and_decode(bytes);
+            assert_eq!(decoded, text);
+            assert_eq!(enc, "UTF-16LE");
+        }
+    }
+
+    #[test]
+    fn detect_gbk_by_chardetng() {
+        let (bytes, _, _) = encoding_rs::GBK.encode("listen = 0.0.0.0\n# 网络监听配置，端口绑定到所有网卡\nserver_name example\n");
+        let (text, enc, _, _) = detect_and_decode(&bytes);
+        assert_eq!(enc, "GBK");
+        assert!(text.contains("网络监听配置"));
+    }
+
+    #[test]
+    fn encode_roundtrip_with_bom_and_crlf() {
+        let bytes = encode_content("a\nb\n", "UTF-8", true, true).unwrap();
+        assert_eq!(bytes, b"\xEF\xBB\xBFa\r\nb\r\n");
+        // detect_and_decode 返回原始解码文本；行尾归一化由 sftp_read_file 完成
+        let (raw, enc, bom, _) = detect_and_decode(&bytes);
+        assert_eq!(raw.replace("\r\n", "\n"), "a\nb\n");
+        assert_eq!(enc, "UTF-8");
+        assert!(bom);
+        // UTF-16LE 写回：BOM + 手动打包的码元
+        let bytes16 = encode_content("hi\n", "UTF-16LE", true, false).unwrap();
+        assert_eq!(bytes16, vec![0xFF, 0xFE, 0x68, 0x00, 0x69, 0x00, 0x0A, 0x00]);
+        let (decoded, enc, _, _) = detect_and_decode(&bytes16);
+        assert_eq!(decoded, "hi\n");
+        assert_eq!(enc, "UTF-16LE");
+    }
+
+    #[test]
+    fn encode_gbk_rejects_unknown_encoding() {
+        assert!(encode_content("x", "no-such-encoding", false, false).is_err());
+    }
+}

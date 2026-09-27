@@ -67,7 +67,7 @@ function onInput(e: Event) {
       class="f-textbox-eye"
       :title="t('ui.clearStored')"
       tabindex="-1"
-      @click="emit('clearStored')"
+      @click="emit('clear-stored')"
     >
       <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M16.6 3.4l-5.8 5.8" />

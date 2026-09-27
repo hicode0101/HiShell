@@ -38,6 +38,10 @@ portable-pty = "0.8"
 serde_yaml = "0.9"
 sha2 = "0.10"
 
+# 文本编码识别/转换（SFTP 在线编辑：自动识别 GBK/UTF-8/Shift_JIS 等）
+encoding_rs = "0.8"
+chardetng = "0.1"
+
 # SSH 用户密钥生成（与 russh-keys 同源 RustCrypto 生态）
 ssh-key = { version = "0.6", features = ["ed25519", "p256", "p384", "p521", "rsa", "encryption", "getrandom"] }
 rsa = "0.9"
