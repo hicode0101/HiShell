@@ -14,7 +14,11 @@ export interface AppSettings {
   terminalFontFamily: string
   terminalFontSize: number
   terminalColorScheme: TerminalColorScheme
+  /** SFTP 文件栏收藏路径（本地 / 远程各自独立） */
+  sftpFavorites: { local: string[]; remote: string[] }
 }
+
+export type SftpSide = 'local' | 'remote'
 
 const LS_KEY = 'hishell.settings'
 
@@ -28,6 +32,7 @@ function defaults(): AppSettings {
     terminalFontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
     terminalFontSize: 14,
     terminalColorScheme: 'dark',
+    sftpFavorites: { local: [], remote: [] },
   }
 }
 
@@ -51,6 +56,27 @@ export const useSettingsStore = defineStore('settings', {
     patch(p: Partial<AppSettings>) {
       this.s = { ...this.s, ...p }
       localStorage.setItem(LS_KEY, JSON.stringify(this.s))
+    },
+    /** 收藏/取消收藏路径（已收藏则移除），返回 true = 新增收藏 */
+    toggleSftpFavorite(side: SftpSide, path: string): boolean {
+      const list = this.s.sftpFavorites[side]
+      const idx = list.indexOf(path)
+      if (idx >= 0) list.splice(idx, 1)
+      else list.push(path)
+      this.persistSftpFavorites()
+      return idx < 0
+    },
+    /** 从收藏列表中删除指定路径 */
+    removeSftpFavorite(side: SftpSide, path: string) {
+      const list = this.s.sftpFavorites[side]
+      const idx = list.indexOf(path)
+      if (idx < 0) return
+      list.splice(idx, 1)
+      this.persistSftpFavorites()
+    },
+    persistSftpFavorites() {
+      const fav = this.s.sftpFavorites
+      this.patch({ sftpFavorites: { local: [...fav.local], remote: [...fav.remote] } })
     },
     applyToDocument() {
       const apply = () => {

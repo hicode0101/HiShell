@@ -331,6 +331,12 @@ export default {
     needConnected: 'Connect to the server before using the Files view',
     disconnectedToast: 'Connection lost — file operations are unavailable',
     edit: 'Edit',
+    favTitle: 'Bookmarked paths',
+    favAdd: 'Bookmark current path',
+    favRemove: 'Remove current bookmark',
+    favEmpty: 'No bookmarks yet',
+    favAdded: 'Bookmarked "{path}"',
+    favRemoved: 'Removed bookmark "{path}"',
     editor: {
       unsaved: 'Unsaved changes',
       langTip: 'Syntax highlighting (detected from file name)',

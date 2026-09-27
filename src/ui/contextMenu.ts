@@ -12,6 +12,12 @@ export interface MenuItem {
   disabled?: boolean
   separator?: boolean
   checked?: boolean
+  /** 悬停提示（收藏路径等长文本用） */
+  title?: string
+  /** 等宽字体渲染 label（路径/代码类条目） */
+  mono?: boolean
+  /** 提供时在条目右侧渲染 × 删除按钮；点击不关闭菜单，便于连续删除 */
+  onRemove?: () => void
   onClick?: () => void
 }
 

@@ -7,6 +7,7 @@
  */
 import { onMounted, onUnmounted } from 'vue'
 import { contextMenuState, hideContextMenu } from './contextMenu'
+import { t } from '../i18n'
 
 function onDocMouseDown(e: MouseEvent) {
   if (!contextMenuState.open) return
@@ -61,6 +62,7 @@ onUnmounted(() => {
           v-else
           class="f-ctx-item"
           :class="{ danger: item.danger, disabled: item.disabled }"
+          :title="item.title"
           @click="
             () => {
               if (item.disabled) return
@@ -73,8 +75,17 @@ onUnmounted(() => {
             <FIcon v-if="item.checked" name="check" :size="15" />
             <FIcon v-else-if="item.icon" :name="item.icon" :size="15" />
           </span>
-          <span class="f-ctx-label">{{ item.label }}</span>
+          <span class="f-ctx-label" :class="{ mono: item.mono }">{{ item.label }}</span>
           <span class="f-ctx-shortcut">{{ item.shortcut }}</span>
+          <button
+            v-if="item.onRemove"
+            class="f-ctx-remove"
+            :title="t('common.delete')"
+            @click.stop="item.onRemove?.()"
+            @mousedown.stop
+          >
+            <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9" /></svg>
+          </button>
         </div>
       </template>
     </div>
@@ -89,6 +100,9 @@ export default { components: { FIcon } }
 <style>
 .f-ctx-menu {
   min-width: 200px;
+  max-width: min(460px, calc(100vw - 16px));
+  max-height: min(70vh, 480px);
+  overflow-y: auto;
   background: var(--bg-layer);
   border: 1px solid var(--stroke-card);
   border-radius: var(--radius-md);
@@ -131,6 +145,31 @@ export default { components: { FIcon } }
 }
 .f-ctx-label {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.f-ctx-label.mono {
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+}
+.f-ctx-remove {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+  margin: 0 -4px 0 4px;
+}
+.f-ctx-remove:hover {
+  background: var(--bg-alt-pressed);
+  color: var(--danger);
 }
 .f-ctx-shortcut {
   color: var(--text-tertiary);

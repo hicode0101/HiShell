@@ -30,9 +30,11 @@ import {
 } from '../../api/backend'
 import { isTauri } from '../../api/adapter'
 import { useTransfersStore } from '../../stores/transfers'
+import { useSettingsStore } from '../../stores/settings'
 import { formatBytes, formatTime, fileKindLabel } from '../../utils/format'
 import { t } from '../../i18n'
-import { FButton, FTextBox, FDialog, showContextMenu, toast, useColResize } from '../../ui'
+import { FButton, FIcon, FTextBox, FDialog, showContextMenu, contextMenuState, toast, useColResize } from '../../ui'
+import type { MenuItem } from '../../ui'
 import FileEditDialog from './FileEditDialog.vue'
 
 const props = defineProps<{
@@ -700,6 +702,55 @@ function paneContextMenu(e: MouseEvent) {
   ])
 }
 
+/* ---------- 收藏常用路径（本地/远程各自独立，持久化于 settings） ----------
+ * 路径栏末尾星形按钮：当前路径已收藏时呈金色实心；
+ * 点击弹出菜单——首项收藏/取消收藏当前路径，下方列出全部收藏，
+ * 点击跳转，条目右侧 × 删除（不关菜单，可连续删除）。 */
+
+const settings = useSettingsStore()
+
+const isFav = computed(() => !!path.value && settings.s.sftpFavorites[props.side].includes(path.value))
+
+function toggleFavorite() {
+  if (!path.value) return
+  const added = settings.toggleSftpFavorite(props.side, path.value)
+  toast(t(added ? 'sftp.favAdded' : 'sftp.favRemoved', { path: path.value }), 'success')
+}
+
+/** 依据当前收藏状态构建菜单（删除条目后就地重建，菜单保持打开） */
+function favoriteMenuItems(): MenuItem[] {
+  const side = props.side
+  const list = settings.s.sftpFavorites[side]
+  return [
+    {
+      label: isFav.value ? t('sftp.favRemove') : t('sftp.favAdd'),
+      icon: isFav.value ? 'star-fill' : 'star',
+      onClick: toggleFavorite,
+    },
+    ...(list.length
+      ? [
+          { separator: true },
+          ...list.map((p) => ({
+            label: p,
+            icon: 'folder',
+            mono: true,
+            title: p,
+            onClick: () => load(p),
+            onRemove: () => {
+              settings.removeSftpFavorite(side, p)
+              toast(t('sftp.favRemoved', { path: p }), 'success')
+              contextMenuState.items = favoriteMenuItems()
+            },
+          })),
+        ]
+      : [{ separator: true }, { label: t('sftp.favEmpty'), disabled: true }]),
+  ]
+}
+
+function openFavorites(e: MouseEvent) {
+  showContextMenu(e, favoriteMenuItems())
+}
+
 /* ---------- 更改权限（远程，参考 Xftp） ---------- */
 
 const permDialog = ref(false)
@@ -923,6 +974,15 @@ defineExpose({
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M16 10a6 6 0 1 1-1.76-4.24M16.5 3.5v3h-3" /></svg>
         </button>
       </div>
+      <button
+        class="pb-btn pb-fav"
+        :class="{ active: isFav }"
+        :title="t('sftp.favTitle')"
+        :disabled="!path"
+        @click.stop="openFavorites"
+      >
+        <FIcon :name="isFav ? 'star-fill' : 'star'" :size="15" />
+      </button>
     </div>
 
     <div class="pane-body">
@@ -1232,6 +1292,12 @@ defineExpose({
 .pb-btn:disabled {
   color: var(--text-disabled);
   cursor: default;
+}
+.pb-fav.active {
+  color: #f8b64c;
+}
+.pb-fav.active:hover {
+  color: #f8b64c;
 }
 .pb-path {
   flex: 1;

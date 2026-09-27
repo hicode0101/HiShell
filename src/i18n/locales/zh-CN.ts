@@ -333,6 +333,12 @@ export default {
     needConnected: '请先连接服务器，再使用「文件」功能',
     disconnectedToast: '连接已断开，无法执行文件操作',
     edit: '编辑',
+    favTitle: '收藏路径',
+    favAdd: '收藏当前路径',
+    favRemove: '取消收藏当前路径',
+    favEmpty: '暂无收藏路径',
+    favAdded: '已收藏「{path}」',
+    favRemoved: '已删除收藏「{path}」',
     editor: {
       unsaved: '未保存',
       langTip: '语法高亮（按文件名识别）',
