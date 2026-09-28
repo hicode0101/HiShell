@@ -86,8 +86,10 @@
 | *多标签 SSH 终端（端口转发徽标 / 搜索 / 状态栏）* | *SFTP 双栏 + 传输队列（进度 / 速度 / 剩余时间）* |
 | <img src="docs/screenshots/HiShell-4.png" width="480"/> | <img src="docs/screenshots/HiShell-5.png" width="480"/> |
 | *端口转发（本地 / 远程 / 动态 SOCKS5）* | *会话管理器（拖拽排序 / 复制 / 连接）* |
-| <img src="docs/screenshots/HiShell-6.png" width="480"/> | <img src="docs/screenshots/HiShell-1.png" width="480"/> |
-| *用户密钥管理器（生成 / 导入 / 导出）* | *欢迎主页（Fluent Design · Mica 材质）* |
+| <img src="docs/screenshots/HiShell-6.png" width="480"/> | <img src="docs/screenshots/HiShell-8.png" width="480"/> |
+| *用户密钥管理器（生成 / 导入 / 导出）* | *在线编辑* |
+| <img src="docs/screenshots/HiShell-1.png" width="480"/> | <img src="docs/screenshots/HiShell-7.png" width="480"/> |
+| *欢迎主页（Fluent Design · Mica 材质）* | *关于* |
 
 ## 🌍 跨平台
 
