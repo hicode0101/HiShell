@@ -29,6 +29,13 @@ function writeStatusLine(entry: ReturnType<typeof terminalEntry>, color: '91' | 
   entry?.term.write(`\r\n\x1b[${color}m[HiShell] ${text}\x1b[0m\r\n\r\n`)
 }
 
+/** 当前本地时间，格式 YYYY-MM-DD HH:mm:ss，用于连接/断开横幅 */
+function formatNow(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
 /** 选项卡功能区事件（清屏/搜索/复制/粘贴/全选），按 tabId 过滤 */
 function onTabCommand(e: Event) {
   const { tabId, cmd } = (e as CustomEvent<{ tabId: string; cmd: string }>).detail
@@ -131,11 +138,11 @@ watch(
     if (!entry) return
     if (status === 'connected') {
       if (props.tab.kind === 'local') return // 本地终端开箱即连，无需横幅
-      writeStatusLine(entry, '92', t('terminal.connected'))
+      writeStatusLine(entry, '92', t('terminal.connected', { time: formatNow() }))
     } else if (status === 'disconnected') {
       const text = props.tab.kind === 'local'
         ? message || t('terminal.localExited')
-        : `${t('terminal.disconnected')}${message ? ' — ' + message : ''}`
+        : `${t('terminal.disconnected', { time: formatNow() })}${message ? ' — ' + message : ''}`
       writeStatusLine(entry, '91', text)
     }
   },

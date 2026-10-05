@@ -236,8 +236,8 @@ export default {
 
   terminal: {
     connecting: 'Connecting to {addr} …',
-    connected: 'Connected',
-    disconnected: 'Disconnected',
+    connected: 'Connected at {time}',
+    disconnected: 'Disconnected at {time}',
     localExited: 'Local terminal process has exited',
     search: 'Search',
     searchPlaceholder: 'Search…',

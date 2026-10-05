@@ -238,8 +238,8 @@ export default {
 
   terminal: {
     connecting: '正在连接 {addr} …',
-    connected: '已连接',
-    disconnected: '连接已断开',
+    connected: '已连接（{time}）',
+    disconnected: '连接已断开（{time}）',
     localExited: '本地终端进程已退出',
     search: '搜索',
     searchPlaceholder: '搜索…',
