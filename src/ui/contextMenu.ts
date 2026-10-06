@@ -28,9 +28,13 @@ export const contextMenuState = reactive({
   items: [] as MenuItem[],
 })
 
+/** 菜单打开时的焦点元素，关闭时恢复——点菜单项会把它 blur 掉，不还原则键盘输入失联（如 xterm） */
+let focusToRestore: Element | null = null
+
 export function showContextMenu(e: MouseEvent, items: MenuItem[]) {
   e.preventDefault?.()
   contextMenuState.items = items
+  if (!contextMenuState.open) focusToRestore = document.activeElement
   contextMenuState.open = true
   // 等渲染后再定位，防止溢出屏幕
   requestAnimationFrame(() => {
@@ -44,4 +48,8 @@ export function showContextMenu(e: MouseEvent, items: MenuItem[]) {
 
 export function hideContextMenu() {
   contextMenuState.open = false
+  const el = focusToRestore
+  focusToRestore = null
+  // 元素可能已被移除（如菜单里点了「关闭标签」）；preventScroll 避免恢复焦点时页面跳动
+  if (el instanceof HTMLElement && el.isConnected) el.focus({ preventScroll: true })
 }

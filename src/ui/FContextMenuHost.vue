@@ -66,7 +66,7 @@ onUnmounted(() => {
           @click="
             () => {
               if (item.disabled) return
-              contextMenuState.open = false
+              hideContextMenu()
               item.onClick?.()
             }
           "
