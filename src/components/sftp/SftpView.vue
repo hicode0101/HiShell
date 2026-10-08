@@ -7,13 +7,23 @@ import TransferQueue from './TransferQueue.vue'
 import { useTransfersStore } from '../../stores/transfers'
 import { fsStat, mockSpecialDirs } from '../../api/backend'
 import { isTauri } from '../../api/adapter'
+import { useOverwriteConfirm } from '../../ui/overwriteConfirm'
+import { joinLocalPath, LOCAL_SEP } from '../../api/localpath'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { formatBytes } from '../../utils/format'
-import { toast } from '../../ui'
+import { toast, FConfirmDialog } from '../../ui'
 import { t } from '../../i18n'
 
 const props = defineProps<{ tab: SessionTab }>()
 const transfers = useTransfersStore()
+
+/** 覆盖确认（上传/下载目标端存在同名条目时先弹框） */
+const {
+  open: owOpen,
+  message: owMessage,
+  ensure: ensureOverwrite,
+  settle: settleOverwrite,
+} = useOverwriteConfirm()
 
 const remotePane = ref<InstanceType<typeof FilePane>>()
 const leftPane = ref<InstanceType<typeof FilePane>>()
@@ -80,8 +90,8 @@ function onDividerDown() {
   window.addEventListener('mouseup', up)
 }
 
-/** 拖拽传输请求：计算方向并入队（tauri 走后端真实通道，浏览器为模拟） */
-function onTransfer(req: TransferRequest) {
+/** 拖拽/右键传输请求：计算方向、检查目标端同名冲突后入队（tauri 走后端真实通道，浏览器为模拟） */
+async function onTransfer(req: TransferRequest) {
   // 远程方向需要真实通道：断开时拦截并提示
   if (req.from === 'remote' && props.tab.status !== 'connected') {
     toast(
@@ -90,37 +100,29 @@ function onTransfer(req: TransferRequest) {
     )
     return
   }
-  if (req.from === 'remote') {
-    for (const entry of req.entries) {
-      if (entry.name === '..') continue
-      const isDir = entry.kind === 'dir'
-      transfers.submit({
-        sid: props.tab.sid,
-        name: entry.name,
-        isDir,
-        direction: 'download',
-        localPath: `${leftPath.value}\\${entry.name}${isDir ? '\\' : ''}`,
-        remotePath: `${req.fromPath === '/' ? '' : req.fromPath}/${entry.name}${isDir ? '/' : ''}`,
-        total: entry.size || (isDir ? 12_582_912 : 1_048_576),
-      })
+  const entries = req.entries.filter((e) => e.name !== '..')
+  if (!entries.length) return
+  const isDownload = req.from === 'remote'
+  const items = entries.map((entry) => {
+    const isDir = entry.kind === 'dir'
+    return {
+      sid: props.tab.sid,
+      name: entry.name,
+      isDir,
+      direction: (isDownload ? 'download' : 'upload') as 'download' | 'upload',
+      localPath: isDownload
+        ? joinLocalPath(leftPath.value, entry.name) + (isDir ? LOCAL_SEP : '')
+        : joinLocalPath(req.fromPath, entry.name),
+      remotePath: isDownload
+        ? `${req.fromPath === '/' ? '' : req.fromPath}/${entry.name}${isDir ? '/' : ''}`
+        : `${rightPath.value}/${entry.name}${isDir ? '/' : ''}`,
+      total: entry.size || (isDir ? (isDownload ? 12_582_912 : 8_388_608) : 1_048_576),
     }
-    toast(t('sftp.paneLoadingToast', { n: req.entries.length }), 'success')
-  } else {
-    for (const entry of req.entries) {
-      if (entry.name === '..') continue
-      const isDir = entry.kind === 'dir'
-      transfers.submit({
-        sid: props.tab.sid,
-        name: entry.name,
-        isDir,
-        direction: 'upload',
-        localPath: `${req.fromPath}\\${entry.name}`,
-        remotePath: `${rightPath.value}/${entry.name}${isDir ? '/' : ''}`,
-        total: entry.size || (isDir ? 8_388_608 : 1_048_576),
-      })
-    }
-    toast(t('sftp.paneLoadingToastUp', { n: req.entries.length }), 'success')
-  }
+  })
+  // 目标端已存在同名条目 → 确认后才继续（用户取消则整批不入队）
+  if (!(await ensureOverwrite(items))) return
+  for (const it of items) transfers.submit(it)
+  toast(t(isDownload ? 'sftp.paneLoadingToast' : 'sftp.paneLoadingToastUp', { n: entries.length }), 'success')
 }
 
 /* ---------- 系统文件拖入 ----------
@@ -161,6 +163,16 @@ async function onExternalDrop(side: DragSide, paths: string[]) {
       return
     }
     let n = 0
+    const base = rightPath.value === '/' ? '' : rightPath.value
+    const items: {
+      sid: number
+      name: string
+      isDir: boolean
+      direction: 'upload'
+      localPath: string
+      remotePath: string
+      total: number
+    }[] = []
     for (const p of paths) {
       let name = p.split(/[\\/]/).filter(Boolean).pop() || p
       let isDir = false
@@ -173,18 +185,20 @@ async function onExternalDrop(side: DragSide, paths: string[]) {
       } catch {
         /* stat 失败仍入队，由后端给出真实错误 */
       }
-      const base = rightPath.value === '/' ? '' : rightPath.value
-      await transfers.submit({
+      items.push({
         sid: tab.sid,
         name,
-        direction: 'upload',
         isDir,
+        direction: 'upload',
         localPath: p,
         remotePath: `${base}/${name}${isDir ? '/' : ''}`,
         total: size,
       })
       n++
     }
+    // 远程端已存在同名条目 → 确认后才继续
+    if (n && !(await ensureOverwrite(items))) return
+    for (const it of items) await transfers.submit(it)
     if (n) toast(t('sftp.dropUploadQueued', { n }), 'success')
   } else {
     const st = paths.length === 1 ? await fsStat(paths[0]!).catch(() => null) : null
@@ -227,7 +241,7 @@ watch(
           up = true
         }
       } else {
-        const base = `${leftPath.value.replace(/[\\/]+$/, '')}\\`
+        const base = `${leftPath.value.replace(/[\\/]+$/, '')}${LOCAL_SEP}`
         if (it.localPath.toLowerCase().startsWith(base.toLowerCase())) {
           refreshedDone.add(it.id)
           down = true
@@ -321,6 +335,16 @@ onUnmounted(() => {
       </span>
       <span v-if="selSize !== null" class="ss-size">{{ formatBytes(selSize) }}</span>
     </div>
+
+    <!-- 覆盖确认：上传/下载目标端存在同名条目时 -->
+    <FConfirmDialog
+      :open="owOpen"
+      :title="t('sftp.overwriteTitle')"
+      :message="owMessage"
+      :confirm-text="t('sftp.overwriteBtn')"
+      @update:open="(v: boolean) => !v && settleOverwrite(false)"
+      @confirm="settleOverwrite(true)"
+    />
   </div>
 </template>
 

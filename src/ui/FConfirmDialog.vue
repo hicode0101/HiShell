@@ -58,5 +58,7 @@ function confirm() {
   line-height: 1.7;
   padding: 6px 2px 10px;
   word-break: break-all;
+  /* 支持多行列表（如覆盖确认的文件名清单） */
+  white-space: pre-wrap;
 }
 </style>

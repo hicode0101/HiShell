@@ -29,6 +29,7 @@ import {
   type RemoteStat,
 } from '../../api/backend'
 import { isTauri } from '../../api/adapter'
+import { joinLocalPath } from '../../api/localpath'
 import { useTransfersStore } from '../../stores/transfers'
 import { useSettingsStore } from '../../stores/settings'
 import { formatBytes, formatTime, fileKindLabel } from '../../utils/format'
@@ -504,6 +505,10 @@ let suppressClick = false
 
 function onRowMouseDown(e: MouseEvent, entry: DirEntry) {
   if (e.button !== 0) return
+  // 自定义行拖拽用 mouse 事件模拟：先阻止原生文字选取（WebKit 选区手势一旦开始，
+  // 中途设置 user-select 无法停止扩展）；preventDefault 会吞掉点击聚焦，手动归还窗格
+  e.preventDefault()
+  rootEl.value?.focus()
   const sel = entries.value.filter((x) => selected.value.has(x.name))
   const items = (sel.some((x) => x.name === entry.name) ? sel : [entry]).filter((x) => x.name !== '..')
   pressEntries = items
@@ -520,6 +525,7 @@ function onRowDragMove(e: MouseEvent) {
     if (Math.abs(e.clientX - pressX) + Math.abs(e.clientY - pressY) < 5) return
     rowDragging = true
     document.body.style.userSelect = 'none'
+    window.getSelection()?.removeAllRanges()
   }
   dragGhost.value = {
     x: e.clientX,
@@ -565,6 +571,9 @@ function onBodyMouseDown(e: MouseEvent) {
   const el = e.currentTarget as HTMLElement
   // 点在滚动条上不启动框选
   if (e.offsetX > el.clientWidth || e.offsetY > el.clientHeight) return
+  // 阻止框选手势触发原生文字选取，焦点手动归还窗格
+  e.preventDefault()
+  rootEl.value?.focus()
   mqBase = e.ctrlKey ? new Set(selected.value) : null
   mqStartX = e.clientX
   mqStartY = e.clientY
@@ -578,6 +587,7 @@ function onMarqueeMove(e: MouseEvent) {
   if (!mqActive) {
     mqActive = true
     document.body.style.userSelect = 'none'
+    window.getSelection()?.removeAllRanges()
   }
   const left = Math.min(mqStartX, e.clientX)
   const top = Math.min(mqStartY, e.clientY)
@@ -987,9 +997,9 @@ async function openEntry(entry: DirEntry) {
   if (!ensureRemote()) return
   try {
     const temp = await specialDir('temp')
-    const targetDir = `${temp.replace(/[\\/]+$/, '')}\\hishell-open`
+    const targetDir = joinLocalPath(temp, 'hishell-open')
     fsMkdir(targetDir).catch(() => {})
-    const localPath = `${targetDir}\\${entry.name}`
+    const localPath = joinLocalPath(targetDir, entry.name)
     const id = await transfers.submit({
       sid: props.session!.sid!,
       name: entry.name,
@@ -1032,7 +1042,7 @@ function joinPath(base: string, name: string): string {
   if (!base) return name
   return props.side === 'remote'
     ? (base === '/' ? '' : base) + '/' + name
-    : base.replace(/[\\/]+$/, '') + '\\' + name
+    : joinLocalPath(base, name)
 }
 
 defineExpose({
@@ -1661,7 +1671,7 @@ defineExpose({
 }
 .props-grid {
   display: grid;
-  grid-template-columns: 90px 1fr;
+  grid-template-columns: 90px minmax(0, 1fr);
   gap: 10px 14px;
   font-size: 12.5px;
   align-items: center;

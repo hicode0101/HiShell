@@ -548,7 +548,8 @@ async function doExport() {
 }
 .uk-form {
   display: grid;
-  grid-template-columns: 92px 1fr;
+  /* minmax(0,1fr)：允许列收缩，长路径/指纹换行（WebKit 下 1fr 会忽略 word-break 撑破容器） */
+  grid-template-columns: 92px minmax(0, 1fr);
   gap: 10px 14px;
   font-size: 12.5px;
   align-items: center;
@@ -578,7 +579,7 @@ async function doExport() {
 }
 .uk-props {
   display: grid;
-  grid-template-columns: 90px 1fr;
+  grid-template-columns: 90px minmax(0, 1fr);
   gap: 10px 14px;
   font-size: 12.5px;
   align-items: center;

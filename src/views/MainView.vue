@@ -16,7 +16,7 @@ import QuickConnectDialog from '../components/connect/QuickConnectDialog.vue'
 import SessionManagerDialog from '../components/SessionManagerDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
 import SettingsView from './SettingsView.vue'
-import { FButton, FDialog, FTextBox, toast } from '../ui'
+import { FButton, FDialog, FTextBox, FConfirmDialog, toast } from '../ui'
 import { useSessionsStore } from '../stores/sessions'
 import { useTransfersStore } from '../stores/transfers'
 import { useProfilesStore } from '../stores/profiles'
@@ -25,6 +25,9 @@ import { defaultProfile, type SessionTab } from '../api/types'
 import { appInfo, openConfigDir, openUrl } from '../api/backend'
 import { t } from '../i18n'
 import { tauriWindow } from '../api/adapter'
+import { joinLocalPath } from '../api/localpath'
+import { useOverwriteConfirm } from '../ui/overwriteConfirm'
+import { COPY_SHORTCUT, PASTE_SHORTCUT } from '../utils/platform'
 
 const sessions = useSessionsStore()
 const profiles = useProfilesStore()
@@ -234,6 +237,14 @@ function onWindowCommand(e: Event) {
 
 const transfersStore = useTransfersStore()
 
+/** 覆盖确认（快捷上传/下载目标端存在同名条目时先弹框） */
+const {
+  open: owOpen,
+  message: owMessage,
+  ensure: ensureOverwrite,
+  settle: settleOverwrite,
+} = useOverwriteConfirm()
+
 /** 需要一个已连接的 SSH 会话（SFTP 视图可用时才可取到远程路径） */
 function connectedSession() {
   const tab = sessions.activeTab
@@ -256,18 +267,21 @@ async function quickUpload() {
   const files = await open({ multiple: true, title: t('sftp.upload') })
   if (!files) return
   const list = Array.isArray(files) ? files : [files]
-  for (const f of list) {
+  const items = list.map((f) => {
     const name = f.split(/[\\/]/).pop() ?? f
-    await transfersStore.submit({
+    return {
       sid: tab.sid,
       name,
       isDir: false,
-      direction: 'upload',
+      direction: 'upload' as const,
       localPath: f,
       remotePath: `${remotePath.replace(/\/+$/, '')}/${name}`,
       total: 1,
-    })
-  }
+    }
+  })
+  // 远程端已存在同名条目 → 确认后才继续
+  if (!(await ensureOverwrite(items))) return
+  for (const it of items) await transfersStore.submit(it)
   toast(t('sftp.paneLoadingToastUp', { n: list.length }), 'success')
 }
 
@@ -283,17 +297,18 @@ async function quickDownload() {
   const dir = await open({ directory: true, title: t('sftp.download') })
   if (typeof dir !== 'string' || !dir) return
   const remoteDir = sftpRef.value?.getRemotePath() ?? '/'
-  for (const entry of targets) {
-    await transfersStore.submit({
-      sid: tab.sid,
-      name: entry.name,
-      isDir: entry.kind === 'dir',
-      direction: 'download',
-      localPath: `${dir.replace(/[\\/]+$/, '')}\\${entry.name}`,
-      remotePath: `${remoteDir.replace(/\/+$/, '')}/${entry.name}`,
-      total: entry.size || 1,
-    })
-  }
+  const items = targets.map((entry) => ({
+    sid: tab.sid,
+    name: entry.name,
+    isDir: entry.kind === 'dir',
+    direction: 'download' as const,
+    localPath: joinLocalPath(dir, entry.name),
+    remotePath: `${remoteDir.replace(/\/+$/, '')}/${entry.name}`,
+    total: entry.size || 1,
+  }))
+  // 本地已存在同名条目 → 确认后才继续
+  if (!(await ensureOverwrite(items))) return
+  for (const it of items) await transfersStore.submit(it)
   toast(t('sftp.paneLoadingToast', { n: targets.length }), 'success')
 }
 
@@ -343,6 +358,8 @@ const hotkeyRows = computed(() => [
   { action: t('menus.newConnection'), keys: 'Ctrl+N / Alt+N' },
   { action: t('menus.fileView'), keys: 'Ctrl+Shift+F' },
   { action: t('menus.newLocalTerminal'), keys: 'Alt+L' },
+  { action: t('menus.copy'), keys: COPY_SHORTCUT },
+  { action: t('menus.paste'), keys: PASTE_SHORTCUT },
   { action: t('menus.tabNext'), keys: 'Ctrl+Tab' },
   { action: t('menus.tabPrev'), keys: 'Ctrl+Shift+Tab' },
   { action: t('menus.tabClose'), keys: 'Ctrl+W' },
@@ -399,6 +416,16 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
     <SessionManagerDialog v-model:open="sessionManagerOpen" />
     <UserKeysDialog v-model:open="userKeysOpen" />
     <QuickConnectDialog v-model:open="quickOpen" :initial="quickInfo" />
+
+    <!-- 覆盖确认：快捷上传/下载目标端存在同名条目时 -->
+    <FConfirmDialog
+      :open="owOpen"
+      :title="t('sftp.overwriteTitle')"
+      :message="owMessage"
+      :confirm-text="t('sftp.overwriteBtn')"
+      @update:open="(v: boolean) => !v && settleOverwrite(false)"
+      @confirm="settleOverwrite(true)"
+    />
     <!-- 连接对话框需位于会话管理器/用户密钥对话框之上（从列表编辑时叠加打开）；
          从会话管理器的新建/编辑里点「连接」时，同步关闭管理器 -->
     <ConnectDialog @connected="sessionManagerOpen = false" />

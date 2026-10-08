@@ -600,7 +600,12 @@ pub async fn expand_entries(
                     } else {
                         let size = e.metadata().size.unwrap_or(0);
                         let rel = child.strip_prefix(remote_path).unwrap_or("");
-                        let local_child = format!("{}{}", local_path.trim_end_matches('\\'), rel.replace('/', "\\"));
+                        // 本地子路径按当前平台分隔符拼接（Windows 用 \，Unix 用 /）
+                        let local_child = format!(
+                            "{}{}",
+                            local_path.trim_end_matches(std::path::MAIN_SEPARATOR),
+                            rel.replace('/', std::path::MAIN_SEPARATOR_STR)
+                        );
                         out.push((local_child, child, size));
                     }
                 }
