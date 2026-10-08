@@ -18,6 +18,8 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void }>()
 const profiles = useProfilesStore()
 const sessions = useSessionsStore()
 const deleteTarget = ref<SshProfile | null>(null)
+/** 单击选中行（不触发连接），双击才连接 */
+const selectedId = ref('')
 
 /* ---------- 行拖拽排序（行首把手，鼠标模拟；顺序经 profile_reorder 持久化） ---------- */
 const listEl = ref<HTMLElement>()
@@ -182,9 +184,11 @@ async function importProfiles() {
         v-for="(row, idx) in rows"
         :key="row.profile.id"
         class="sm-row"
-        :class="{ 'dragging-row': gripDragging && gripIndex === idx }"
+        :class="{ 'dragging-row': gripDragging && gripIndex === idx, 'selected-row': selectedId === row.profile.id }"
+        @click="selectedId = row.profile.id"
+        @dblclick="connect(row.profile)"
       >
-        <span class="sm-grip" :title="t('sessions.dragSort')" @mousedown="onGripMouseDown($event, idx)">
+        <span class="sm-grip" :title="t('sessions.dragSort')" @mousedown="onGripMouseDown($event, idx)" @dblclick.stop>
           <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
             <circle cx="2.6" cy="3" r="1.4" /><circle cx="7.4" cy="3" r="1.4" />
             <circle cx="2.6" cy="8" r="1.4" /><circle cx="7.4" cy="8" r="1.4" />
@@ -198,7 +202,7 @@ async function importProfiles() {
           </div>
           <div class="sm-addr">{{ row.addr }} · {{ authLabel(row.profile.auth) }}</div>
         </div>
-        <div class="sm-ops">
+        <div class="sm-ops" @click.stop @dblclick.stop>
           <button class="sm-ic-btn connect" :title="t('common.connect')" @click="connect(row.profile)">
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M7.5 3v3.6M12.5 3v3.6M5.4 6.6h9.2v3.2a4.6 4.6 0 0 1-9.2 0V6.6zM10 14.4v2.8" />
@@ -291,9 +295,15 @@ async function importProfiles() {
   gap: 12px;
   padding: 9px 10px;
   border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none;
 }
 .sm-row:hover {
   background: var(--bg-alt-hover);
+}
+/* 单击选中的行（覆盖 hover 底色，需置于 :hover 之后） */
+.sm-row.selected-row {
+  background: var(--bg-selected);
 }
 .sm-main {
   flex: 1;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 本地终端会话管理器：会话名 + 默认工作路径。
- * 点击会话名/终端图标即按配置路径开启本地终端；
+ * 单击选中行，双击行或点击终端图标按配置路径开启本地终端；
  * 支持 拖动排序 / 编辑 / 复制 / 删除（与 SSH 会话管理器交互一致）。
  * 配置整表存配置目录 local_terminals.json，改动即保存。
  */
@@ -20,6 +20,8 @@ const sessions = useSessionsStore()
 
 const list = ref<LocalTermSession[]>([])
 const loadedOnce = ref(false)
+/** 单击选中行（不触发打开），双击才开启终端 */
+const selectedId = ref('')
 
 watch(
   () => props.open,
@@ -183,20 +185,22 @@ async function confirmRemove() {
         v-for="(row, idx) in list"
         :key="row.id"
         class="lts-row"
-        :class="{ 'dragging-row': gripDragging && gripIndex === idx }"
+        :class="{ 'dragging-row': gripDragging && gripIndex === idx, 'selected-row': selectedId === row.id }"
+        @click="selectedId = row.id"
+        @dblclick="openTerminal(row)"
       >
-        <span class="lts-grip" :title="t('localSessions.dragSort')" @mousedown="onGripMouseDown($event, idx)">
+        <span class="lts-grip" :title="t('localSessions.dragSort')" @mousedown="onGripMouseDown($event, idx)" @dblclick.stop>
           <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
             <circle cx="2.6" cy="3" r="1.4" /><circle cx="7.4" cy="3" r="1.4" />
             <circle cx="2.6" cy="8" r="1.4" /><circle cx="7.4" cy="8" r="1.4" />
             <circle cx="2.6" cy="13" r="1.4" /><circle cx="7.4" cy="13" r="1.4" />
           </svg>
         </span>
-        <div class="lts-main" :title="t('localSessions.openTerminal')" @click="openTerminal(row)">
+        <div class="lts-main">
           <div class="lts-name">{{ row.name }}</div>
           <div class="lts-path">{{ row.path || '—' }}</div>
         </div>
-        <div class="lts-ops">
+        <div class="lts-ops" @click.stop @dblclick.stop>
           <button class="lts-ic-btn connect" :title="t('localSessions.openTerminal')" @click="openTerminal(row)">
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
               <rect x="3" y="4.5" width="14" height="11" rx="1.5" /><path d="M6.5 8l2.8 2.3-2.8 2.3M11.2 13h3" />
@@ -304,14 +308,19 @@ async function confirmRemove() {
   gap: 12px;
   padding: 9px 10px;
   border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none;
 }
 .lts-row:hover {
   background: var(--bg-alt-hover);
 }
+/* 单击选中的行（覆盖 hover 底色，需置于 :hover 之后） */
+.lts-row.selected-row {
+  background: var(--bg-selected);
+}
 .lts-main {
   flex: 1;
   min-width: 0;
-  cursor: pointer;
 }
 .lts-name {
   font-size: 13px;
