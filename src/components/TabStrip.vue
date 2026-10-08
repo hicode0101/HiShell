@@ -11,10 +11,13 @@ const profiles = useProfilesStore()
 
 /* ---------- 标签拖拽排序（鼠标模拟）----------
  * dragDropEnabled:true 后 WebView2 拦截了 HTML5 拖拽（含标签页内部拖动），
- * 改用 mousedown + mousemove 自行实现，复用原有的插入位置指示线视觉。 */
+ * 改用 mousedown + mousemove 自行实现。
+ * 参考主流终端/浏览器：按住进入拖动态后光标切换为移动图标，
+ * 拖动过程中实时换位——光标压到某个标签上即把被拖标签插到它的
+ * 靠近来向一侧（从左往右压到即插其右、从右往左压到即插其左），
+ * 无需等松开鼠标。 */
 const dragId = ref('')
-const dropTargetId = ref('')
-const dropBefore = ref(false)
+const stripEl = ref<HTMLElement | null>(null)
 let pressId = ''
 let pressX = 0
 let pressY = 0
@@ -39,39 +42,45 @@ function onTabDragMove(e: MouseEvent) {
     tabDragging = true
     dragId.value = pressId
     document.body.style.userSelect = 'none'
+    document.body.classList.add('tab-dragging')
   }
-  // 光标落在哪个标签上 → 显示插入位置指示线
-  const hit = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest('.tab') as HTMLElement | null
-  const targetId = hit?.dataset.tabId ?? ''
-  if (!targetId || targetId === dragId.value) {
-    dropTargetId.value = ''
-    return
+  const strip = stripEl.value
+  if (!strip) return
+  // 用 offsetLeft/offsetWidth（布局位置，不受 FLIP 滑动动画的 transform 影响）做命中判定，避免来回抖动
+  const x = e.clientX - strip.getBoundingClientRect().left
+  const els = Array.from(strip.querySelectorAll<HTMLElement>('.tab'))
+  const from = els.findIndex((el) => el.dataset.tabId === dragId.value)
+  if (from < 0) return
+  let index = 0
+  for (let i = 0; i < els.length; i++) {
+    if (i === from) continue
+    const left = els[i].offsetLeft
+    const right = left + els[i].offsetWidth
+    if (x > left && x < right) {
+      // 压在标签 i 上 → 移到它的位置（自动落在靠近来向的一侧）
+      index = i
+      break
+    }
+    if (right <= x) index = i < from ? i + 1 : i
   }
-  const rect = hit!.getBoundingClientRect()
-  dropBefore.value = e.clientX < rect.left + rect.width / 2
-  dropTargetId.value = targetId
+  if (index !== from) sessions.moveTabToIndex(dragId.value, index)
 }
 
-function onTabDragUp(e: MouseEvent) {
+function onTabDragUp() {
   document.removeEventListener('mousemove', onTabDragMove)
   document.removeEventListener('mouseup', onTabDragUp)
   document.body.style.userSelect = ''
-  const wasDragging = tabDragging
-  tabDragging = false
-  if (wasDragging) {
+  document.body.classList.remove('tab-dragging')
+  if (tabDragging) {
     // 只吞掉 mouseup 后紧随的那次 click，避免残留标志吞掉下一次标签点击
     suppressClick = true
     setTimeout(() => {
       suppressClick = false
     }, 0)
-    if (dragId.value && dropTargetId.value && dropTargetId.value !== dragId.value) {
-      sessions.moveTab(dragId.value, dropTargetId.value, dropBefore.value)
-    }
   }
+  tabDragging = false
   pressId = ''
   dragId.value = ''
-  dropTargetId.value = ''
-  dropBefore.value = false
 }
 
 function onTabClick(tab: SessionTab) {
@@ -144,7 +153,7 @@ function tabAccent(tab: SessionTab): string {
 </script>
 
 <template>
-  <div class="tabstrip" @contextmenu="onStripContext" @auxclick.middle="sessions.closeTab(sessions.activeTabId)">
+  <div ref="stripEl" class="tabstrip" @contextmenu="onStripContext" @auxclick.middle="sessions.closeTab(sessions.activeTabId)">
     <TransitionGroup name="tab">
       <div
         v-for="tab in sessions.tabs"
@@ -154,8 +163,6 @@ function tabAccent(tab: SessionTab): string {
           active: tab.id === sessions.activeTabId,
           settings: tab.kind === 'settings',
           dragging: dragId === tab.id,
-          'drop-before': dropTargetId === tab.id && dropBefore,
-          'drop-after': dropTargetId === tab.id && !dropBefore,
         }"
         :style="{ '--tab-accent': tabAccent(tab) }"
         :title="tab.address || tab.title"
@@ -206,7 +213,7 @@ function tabAccent(tab: SessionTab): string {
   cursor: pointer;
   color: var(--text-secondary);
   position: relative;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
 }
 .tab:hover {
   background: var(--bg-alt-hover);
@@ -226,15 +233,11 @@ function tabAccent(tab: SessionTab): string {
   border-radius: 2px;
   background: var(--tab-accent, var(--accent));
 }
-/* 拖拽排序反馈 */
+/* 拖拽排序反馈：被拖标签“抬起”，其余标签实时让位（配合 .tab-move 滑动动画） */
 .tab.dragging {
-  opacity: 0.4;
-}
-.tab.drop-before {
-  box-shadow: -3px 0 0 0 var(--tab-accent, var(--accent));
-}
-.tab.drop-after {
-  box-shadow: 3px 0 0 0 var(--tab-accent, var(--accent));
+  opacity: 0.88;
+  z-index: 5;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.35);
 }
 .dot {
   width: 8px;
@@ -322,5 +325,19 @@ function tabAccent(tab: SessionTab): string {
 }
 .tab-leave-active {
   transition: all 0.12s ease;
+}
+/* 实时换位时其余标签的滑动动画 */
+.tab-move {
+  transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+</style>
+
+<style>
+/* 拖动标签期间全局光标切换为“移动”十字图标（body 不受 scoped 约束，需非 scoped 块） */
+body.tab-dragging,
+body.tab-dragging * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 3v18M3 12h18M9 6l3-3l3 3M9 18l3 3l3-3M6 9l-3 3l3 3M18 9l3 3l-3 3' fill='none' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M12 3v18M3 12h18M9 6l3-3l3 3M9 18l3 3l3-3M6 9l-3 3l3 3M18 9l3 3l-3 3' fill='none' stroke='%230067c0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+      12 12,
+    move !important;
 }
 </style>

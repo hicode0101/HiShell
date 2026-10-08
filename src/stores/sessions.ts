@@ -49,20 +49,12 @@ export const useSessionsStore = defineStore('sessions', {
     activate(id: string) {
       this.activeTabId = id
     },
-    /** 拖拽排序：把 dragId 标签移动到 targetId 之前/之后 */
-    moveTab(dragId: string, targetId: string, before: boolean) {
-      if (dragId === targetId) return
+    /** 拖拽排序：把 dragId 标签移动到目标下标（拖动过程中实时调用） */
+    moveTabToIndex(dragId: string, index: number) {
       const from = this.tabs.findIndex((t) => t.id === dragId)
-      const targetIdx = this.tabs.findIndex((t) => t.id === targetId)
-      if (from < 0 || targetIdx < 0) return
+      if (from < 0 || index < 0 || index >= this.tabs.length || index === from) return
       const [tab] = this.tabs.splice(from, 1)
-      let insertIdx = this.tabs.findIndex((t) => t.id === targetId)
-      if (insertIdx < 0) {
-        this.tabs.splice(from, 0, tab) // 目标消失则原位放回
-        return
-      }
-      if (!before) insertIdx += 1
-      this.tabs.splice(insertIdx, 0, tab)
+      this.tabs.splice(index, 0, tab)
     },
     openConnectDialog(profileId?: string) {
       this.connectDialogProfileId = profileId ?? ''
