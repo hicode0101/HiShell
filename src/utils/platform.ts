@@ -4,3 +4,6 @@
  */
 export const COPY_SHORTCUT = 'Ctrl+Shift+C'
 export const PASTE_SHORTCUT = 'Ctrl+Shift+V'
+
+/** 运行环境是否 macOS（拖放坐标等平台差异判定用） */
+export const isMac = /macintosh|mac os x/i.test(navigator.userAgent)

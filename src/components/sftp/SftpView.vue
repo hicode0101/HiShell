@@ -9,6 +9,7 @@ import { fsStat, mockSpecialDirs } from '../../api/backend'
 import { isTauri } from '../../api/adapter'
 import { useOverwriteConfirm } from '../../ui/overwriteConfirm'
 import { joinLocalPath, LOCAL_SEP } from '../../api/localpath'
+import { isMac } from '../../utils/platform'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { formatBytes } from '../../utils/format'
 import { toast, FConfirmDialog } from '../../ui'
@@ -264,9 +265,11 @@ onMounted(async () => {
         setOver(null)
         return
       }
-      // 事件坐标为物理像素，换算为 CSS 逻辑像素后做命中判定
-      const dpr = window.devicePixelRatio || 1
-      const side = hitPane(p.position.x / dpr, p.position.y / dpr)
+      // 事件坐标按平台换算成 CSS 逻辑像素：wry 在 macOS(wkwebview draggingLocation)
+      // 直接给窗口相对逻辑像素；Windows(webview2 ScreenToClient) / Linux(webkitgtk gdk)
+      // 给物理像素，需除以 dpr。统一按物理处理会把 Retina 下的命中点缩小一半。
+      const scale = isMac ? 1 : window.devicePixelRatio || 1
+      const side = hitPane(p.position.x / scale, p.position.y / scale)
       if (p.type === 'drop') {
         setOver(null)
         if (side) void onExternalDrop(side, p.paths)

@@ -570,7 +570,12 @@ pub async fn expand_entries(
                     if entry.file_type().await?.is_dir() {
                         stack.push(p);
                     } else {
-                        let rel = p.strip_prefix(local_path).unwrap_or("").replace('\\', "/");
+                        // 对去掉尾分隔符的源路径截取相对路径，保证 rel 以 / 开头
+                        //（源路径带尾分隔符时 strip_prefix 会丢掉它，拼到目标端变成名字粘连）
+                        let rel = p
+                            .strip_prefix(local_path.trim_end_matches(std::path::MAIN_SEPARATOR))
+                            .unwrap_or("")
+                            .replace('\\', "/");
                         let remote_child = format!("{}{}", remote_path.trim_end_matches('/'), rel);
                         let size = entry.metadata().await.map(|m| m.len()).unwrap_or(0);
                         out.push((p, remote_child, size));
@@ -599,8 +604,8 @@ pub async fn expand_entries(
                         stack.push(child);
                     } else {
                         let size = e.metadata().size.unwrap_or(0);
-                        let rel = child.strip_prefix(remote_path).unwrap_or("");
-                        // 本地子路径按当前平台分隔符拼接（Windows 用 \，Unix 用 /）
+                        // 对去掉尾分隔符的远程基路径截取，rel 恒以 / 开头，本地按平台分隔符拼接
+                        let rel = child.strip_prefix(remote_path.trim_end_matches('/')).unwrap_or("");
                         let local_child = format!(
                             "{}{}",
                             local_path.trim_end_matches(std::path::MAIN_SEPARATOR),

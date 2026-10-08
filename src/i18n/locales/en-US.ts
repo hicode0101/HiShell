@@ -322,6 +322,7 @@ export default {
     chmodRecursive: 'Include subdirectories',
     chmodHint: 'This command applies to some UNIX hosts only.',
     chmodDone: 'Permissions changed for "{name}" ({n} item(s))',
+    chmodMultiName: '{n} item(s)',
     props: 'Properties',
     newFolder: 'New Folder',
     paste: 'Paste',

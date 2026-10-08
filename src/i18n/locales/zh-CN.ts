@@ -324,6 +324,7 @@ export default {
     chmodRecursive: '包含子目录',
     chmodHint: '此命令仅在部分 UNIX 主机中适用。',
     chmodDone: '已更改「{name}」的权限（共 {n} 项）',
+    chmodMultiName: '{n} 个项目',
     props: '属性',
     newFolder: '新建文件夹',
     paste: '粘贴',
