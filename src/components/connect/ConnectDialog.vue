@@ -465,7 +465,7 @@ async function connectNow() {
 }
 .cd-grid {
   display: grid;
-  grid-template-columns: 96px 1fr;
+  grid-template-columns: 96px minmax(0, 1fr);
   gap: 10px 12px;
   align-items: center;
 }

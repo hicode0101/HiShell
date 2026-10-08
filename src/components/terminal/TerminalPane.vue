@@ -9,6 +9,7 @@ import { showContextMenu } from '../../ui'
 import { onSshDataFor, onLocalDataFor } from '../../stores/events'
 import { localResize, localWrite, sshResize, sshWrite } from '../../api/backend'
 import { applySettingsToTerminals, attachTerminal, detachTerminal, terminalEntry } from './terminalRegistry'
+import { COPY_SHORTCUT, PASTE_SHORTCUT } from '../../utils/platform'
 
 const props = defineProps<{ tab: SessionTab }>()
 
@@ -76,7 +77,7 @@ function onTermContextMenu(e: MouseEvent) {
     {
       label: t('menus.copy'),
       icon: 'copy',
-      shortcut: 'Ctrl+Shift+C',
+      shortcut: COPY_SHORTCUT,
       disabled: !entry?.term.hasSelection(),
       onClick: () => {
         if (entry && entry.term.hasSelection()) {
@@ -87,7 +88,7 @@ function onTermContextMenu(e: MouseEvent) {
     {
       label: t('menus.paste'),
       icon: 'paste',
-      shortcut: 'Ctrl+Shift+V',
+      shortcut: PASTE_SHORTCUT,
       onClick: () => {
         navigator.clipboard
           .readText()

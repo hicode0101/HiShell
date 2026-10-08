@@ -301,8 +301,8 @@ export interface RemoteStat {
   attrs?: string
 }
 
-export async function sftpStat(sid: number, path: string): Promise<RemoteStat> {
-  return tauriInvoke<RemoteStat>('sftp_stat', { sid, path })
+export async function sftpStat(sid: number, path: string): Promise<RemoteStat | null> {
+  return tauriInvoke<RemoteStat | null>('sftp_stat', { sid, path })
 }
 
 /* ---------- 远程文本文件在线编辑 ---------- */

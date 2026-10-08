@@ -29,6 +29,7 @@ import {
   type RemoteStat,
 } from '../../api/backend'
 import { isTauri } from '../../api/adapter'
+import { joinLocalPath } from '../../api/localpath'
 import { useTransfersStore } from '../../stores/transfers'
 import { useSettingsStore } from '../../stores/settings'
 import { formatBytes, formatTime, fileKindLabel } from '../../utils/format'
@@ -106,7 +107,7 @@ function openNewFolder() {
 
 function openDelete(entry: DirEntry) {
   if (!ensureRemote()) return
-  const sel = entries.value.filter((x) => selected.value.has(x.name))
+  const sel = entries.value.filter((x) => selected.value.has(x.name) && x.name !== '..')
   dialogTargets.value = sel.length > 1 && sel.some((x) => x.name === entry.name) ? sel : [entry]
   dialog.value = 'delete'
 }
@@ -504,6 +505,10 @@ let suppressClick = false
 
 function onRowMouseDown(e: MouseEvent, entry: DirEntry) {
   if (e.button !== 0) return
+  // 自定义行拖拽用 mouse 事件模拟：先阻止原生文字选取（WebKit 选区手势一旦开始，
+  // 中途设置 user-select 无法停止扩展）；preventDefault 会吞掉点击聚焦，手动归还窗格
+  e.preventDefault()
+  rootEl.value?.focus()
   const sel = entries.value.filter((x) => selected.value.has(x.name))
   const items = (sel.some((x) => x.name === entry.name) ? sel : [entry]).filter((x) => x.name !== '..')
   pressEntries = items
@@ -520,6 +525,7 @@ function onRowDragMove(e: MouseEvent) {
     if (Math.abs(e.clientX - pressX) + Math.abs(e.clientY - pressY) < 5) return
     rowDragging = true
     document.body.style.userSelect = 'none'
+    window.getSelection()?.removeAllRanges()
   }
   dragGhost.value = {
     x: e.clientX,
@@ -565,6 +571,9 @@ function onBodyMouseDown(e: MouseEvent) {
   const el = e.currentTarget as HTMLElement
   // 点在滚动条上不启动框选
   if (e.offsetX > el.clientWidth || e.offsetY > el.clientHeight) return
+  // 阻止框选手势触发原生文字选取，焦点手动归还窗格
+  e.preventDefault()
+  rootEl.value?.focus()
   mqBase = e.ctrlKey ? new Set(selected.value) : null
   mqStartX = e.clientX
   mqStartY = e.clientY
@@ -578,6 +587,7 @@ function onMarqueeMove(e: MouseEvent) {
   if (!mqActive) {
     mqActive = true
     document.body.style.userSelect = 'none'
+    window.getSelection()?.removeAllRanges()
   }
   const left = Math.min(mqStartX, e.clientX)
   const top = Math.min(mqStartY, e.clientY)
@@ -735,30 +745,41 @@ function typeaheadChar(c: string) {
 /* ---------- 右键菜单 ---------- */
 
 function rowContextMenu(e: MouseEvent, entry: DirEntry) {
-  onRowClick(e, entry, entries.value.findIndex((x) => x.name === entry.name))
+  // 右键选中规则：目标行不在选中集合中 → 仅选中它；已在（多）选中 → 保留整组选中。
+  // 不能走 onRowClick——它的普通点击分支会把选中重置为单行，多选在右键瞬间塌缩。
+  if (!selected.value.has(entry.name)) {
+    selected.value = new Set([entry.name])
+    lastSelected.value = entry.name
+  }
   const targets = entries.value.filter((x) => selected.value.has(x.name))
-  const realTargets = targets.length ? targets : [entry]
+  const realTargets = targets.filter((x) => x.name !== '..')
+  const multi = realTargets.length > 1
   const isDotDot = entry.name === '..'
   const isDrive = !!entry.path
   const hasDrive = realTargets.some((x) => !!x.path)
   showContextMenu(e, [
-    // 在线编辑：仅远程窗格的文件条目
-    ...(props.side === 'remote' && entry.kind === 'file' && !isDotDot
+    // 在线编辑：仅远程窗格的文件条目（多选时不适用）
+    ...(props.side === 'remote' && entry.kind === 'file' && !isDotDot && !multi
       ? [{ label: t('sftp.edit'), icon: 'code', onClick: () => openEdit(entry) }]
       : []),
     {
       label: props.side === 'remote' ? t('sftp.download') : t('sftp.upload'),
       icon: props.side === 'remote' ? 'download' : 'upload',
-      disabled: realTargets.every((x) => x.name === '..') || hasDrive,
+      disabled: !realTargets.length || hasDrive,
       onClick: () => emit('transfer-request', { entries: realTargets, from: props.side, fromPath: path.value }),
     },
     { separator: true },
-    {
-      label: t('sftp.rename'),
-      icon: 'edit',
-      disabled: isDotDot || isDrive,
-      onClick: () => openRename(entry),
-    },
+    // 重命名/属性只对单个条目有意义，多选时隐藏
+    ...(multi
+      ? []
+      : [
+          {
+            label: t('sftp.rename'),
+            icon: 'edit',
+            disabled: isDotDot || isDrive,
+            onClick: () => openRename(entry),
+          },
+        ]),
     {
       label: t('sftp.delete'),
       icon: 'trash',
@@ -786,11 +807,7 @@ function rowContextMenu(e: MouseEvent, entry: DirEntry) {
         ]
       : []),
     { separator: true },
-    {
-      label: t('sftp.props'),
-      icon: 'info',
-      onClick: () => openProps(entry),
-    },
+    ...(multi ? [] : [{ label: t('sftp.props'), icon: 'info', onClick: () => openProps(entry) }]),
   ])
 }
 
@@ -873,7 +890,8 @@ function openFavorites(e: MouseEvent) {
 const permDialog = ref(false)
 const permBusy = ref(false)
 const permName = ref('')
-const permPath = ref('')
+/** 应用权限的目标条目（多选时为全部选中项） */
+const permTargets = ref<DirEntry[]>([])
 const permIsDir = ref(false)
 const permOctal = ref('644')
 const permRecursive = ref(false)
@@ -915,15 +933,19 @@ function octalFromAttrs(attrs: string | undefined): string {
 async function openChmod(entry: DirEntry) {
   if (props.side !== 'remote') return
   if (!ensureRemote()) return
-  permName.value = entry.name
-  permPath.value = targetPath(entry)
+  // 多选时对全部选中条目生效；单选时即右键目标
+  const sel = entries.value.filter((x) => selected.value.has(x.name) && x.name !== '..')
+  permTargets.value = sel.length > 1 ? sel : [entry]
+  permName.value = permTargets.value.length > 1
+    ? t('sftp.chmodMultiName', { n: permTargets.value.length })
+    : entry.name
   permIsDir.value = entry.kind === 'dir'
   permRecursive.value = false
   if (entry.attrs) {
     permOctal.value = octalFromAttrs(entry.attrs)
   } else {
     try {
-      const st = await sftpStat(props.session!.sid!, permPath.value)
+      const st = await sftpStat(props.session!.sid!, targetPath(entry))
       permOctal.value = octalFromAttrs(st?.attrs)
     } catch {
       permOctal.value = '644'
@@ -952,7 +974,11 @@ async function applyChmod() {
   if (!isTauri || props.session?.sid === undefined || permInvalid.value || permBusy.value) return
   permBusy.value = true
   try {
-    const n = await sftpChmod(props.session.sid, permPath.value, parseInt(permOctal.value, 8), permRecursive.value)
+    const mode = parseInt(permOctal.value, 8)
+    let n = 0
+    for (const tgt of permTargets.value) {
+      n += await sftpChmod(props.session.sid, targetPath(tgt), mode, permRecursive.value)
+    }
     toast(t('sftp.chmodDone', { name: permName.value, n }), 'success')
     permDialog.value = false
     reload()
@@ -987,9 +1013,9 @@ async function openEntry(entry: DirEntry) {
   if (!ensureRemote()) return
   try {
     const temp = await specialDir('temp')
-    const targetDir = `${temp.replace(/[\\/]+$/, '')}\\hishell-open`
+    const targetDir = joinLocalPath(temp, 'hishell-open')
     fsMkdir(targetDir).catch(() => {})
-    const localPath = `${targetDir}\\${entry.name}`
+    const localPath = joinLocalPath(targetDir, entry.name)
     const id = await transfers.submit({
       sid: props.session!.sid!,
       name: entry.name,
@@ -1032,7 +1058,7 @@ function joinPath(base: string, name: string): string {
   if (!base) return name
   return props.side === 'remote'
     ? (base === '/' ? '' : base) + '/' + name
-    : base.replace(/[\\/]+$/, '') + '\\' + name
+    : joinLocalPath(base, name)
 }
 
 defineExpose({
@@ -1661,7 +1687,7 @@ defineExpose({
 }
 .props-grid {
   display: grid;
-  grid-template-columns: 90px 1fr;
+  grid-template-columns: 90px minmax(0, 1fr);
   gap: 10px 14px;
   font-size: 12.5px;
   align-items: center;

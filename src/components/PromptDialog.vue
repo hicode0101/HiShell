@@ -352,7 +352,8 @@ function kiPrompts(o: Record<string, unknown> | undefined): { text: string; echo
 /* 统一认证面板：紧凑布局，对齐快速连接对话框的认证区 */
 .pa-grid {
   display: grid;
-  grid-template-columns: 92px 1fr;
+  /* minmax(0,1fr)：允许列收缩，长指纹/长值换行（WebKit 下 1fr 会忽略 word-break 撑破容器） */
+  grid-template-columns: 92px minmax(0, 1fr);
   gap: 10px 14px;
   font-size: 12.5px;
   align-items: center;

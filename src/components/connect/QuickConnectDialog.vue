@@ -257,7 +257,7 @@ async function connectNow() {
 }
 .qc-grid {
   display: grid;
-  grid-template-columns: 92px 1fr;
+  grid-template-columns: 92px minmax(0, 1fr);
   gap: 10px 14px;
   font-size: 12.5px;
   align-items: center;

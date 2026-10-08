@@ -95,6 +95,34 @@ function pickTermTheme(scheme: 'dark' | 'light' | 'followApp'): ReturnType<typeo
   return darkTheme()
 }
 
+/**
+ * 终端复制/粘贴快捷键（全平台统一 Ctrl+Shift+C / Ctrl+Shift+V；返回 false 表示
+ * 已处理，xterm 不再把按键发往 shell）。Ctrl+C 不拦截，保留 ^C/SIGINT 语义。
+ * 不能依赖 WebView 原生复制：xterm 无真实 DOM 选区（原生 copy 事件无内容），
+ * WKWebView/WebKitGTK 也不保证把粘贴组合键转成隐藏 textarea 的 paste 事件，
+ * 因此两个方向都显式走剪贴板 API。
+ */
+function terminalClipboardKeys(term: Terminal, ev: KeyboardEvent): boolean {
+  if (ev.type !== 'keydown') return true
+  const key = ev.key.toLowerCase()
+  if (ev.ctrlKey && ev.shiftKey && (key === 'c' || ev.code === 'KeyC')) {
+    if (term.hasSelection()) {
+      navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+    }
+    return false
+  }
+  if (ev.ctrlKey && ev.shiftKey && (key === 'v' || ev.code === 'KeyV')) {
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        if (text) term.input(text)
+      })
+      .catch(() => {})
+    return false
+  }
+  return true
+}
+
 export function getTerminal(tab: SessionTab): TerminalEntry {
   let entry = registry.get(tab.id)
   if (!entry) {
@@ -112,6 +140,7 @@ export function getTerminal(tab: SessionTab): TerminalEntry {
     const search = new SearchAddon()
     term.loadAddon(fit)
     term.loadAddon(search)
+    term.attachCustomKeyEventHandler((ev) => terminalClipboardKeys(term, ev))
 
     entry = { term, fit, search, wired: false, localWired: false }
     registry.set(tab.id, entry)

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { t } from '../i18n'
 import { useSessionsStore } from '../stores/sessions'
+import { COPY_SHORTCUT, PASTE_SHORTCUT } from '../utils/platform'
 
 interface MenuChild {
   label?: string
@@ -40,8 +41,8 @@ const menus = computed<MenuDef[]>(() => [
   {
     label: t('menus.edit'),
     children: [
-      { label: t('menus.copy'), command: 'edit-copy', shortcut: 'Ctrl+Shift+C' },
-      { label: t('menus.paste'), command: 'edit-paste', shortcut: 'Ctrl+Shift+V' },
+      { label: t('menus.copy'), command: 'edit-copy', shortcut: COPY_SHORTCUT },
+      { label: t('menus.paste'), command: 'edit-paste', shortcut: PASTE_SHORTCUT },
       { separator: true },
       { label: t('menus.selectAll'), command: 'edit-select-all' },
       { label: t('menus.clearScreen'), command: 'edit-clear', shortcut: 'Ctrl+L' },
