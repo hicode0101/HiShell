@@ -85,9 +85,10 @@ fn shell_candidates() -> Vec<String> {
 
 /* ---------------- 命令 ---------------- */
 
-/// 启动本地 shell，返回 lid；输出经 local-data 事件推送
+/// 启动本地 shell，返回 lid；输出经 local-data 事件推送。
+/// cwd：本地终端会话配置的默认工作路径，目录不存在时回退主目录
 #[tauri::command]
-pub fn local_start(app: AppHandle, mgr: State<'_, LocalManager>) -> Result<u32, String> {
+pub fn local_start(app: AppHandle, mgr: State<'_, LocalManager>, cwd: Option<String>) -> Result<u32, String> {
     let pty_system = portable_pty::native_pty_system();
     let pair = pty_system
         .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
@@ -98,12 +99,15 @@ pub fn local_start(app: AppHandle, mgr: State<'_, LocalManager>) -> Result<u32, 
         return Err("未找到可用的本地 shell".into());
     }
 
-    let home = dirs::home_dir();
+    let configured = cwd
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_dir())
+        .or_else(dirs::home_dir);
     let mut spawned: Option<(Box<dyn portable_pty::Child + Send + Sync>, String)> = None;
     let mut last_err = String::new();
     for shell in &candidates {
         let mut cmd = portable_pty::CommandBuilder::new(shell);
-        if let Some(h) = &home {
+        if let Some(h) = &configured {
             let _ = cmd.cwd(h);
         }
         cmd.env("TERM", "xterm-256color");

@@ -14,6 +14,7 @@ import PromptDialog from '../components/PromptDialog.vue'
 import ImportDialog from '../components/import/ImportDialog.vue'
 import QuickConnectDialog from '../components/connect/QuickConnectDialog.vue'
 import SessionManagerDialog from '../components/SessionManagerDialog.vue'
+import LocalSessionDialog from '../components/LocalSessionDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
 import SettingsView from './SettingsView.vue'
 import { FButton, FDialog, FTextBox, FConfirmDialog, toast } from '../ui'
@@ -40,6 +41,9 @@ const renameValue = ref('')
 const aboutOpen = ref(false)
 const importDialogOpen = ref(false)
 const sessionManagerOpen = ref(false)
+const localSessionsOpen = ref(false)
+/** 正在重命名的目标标签 id（右键菜单指定，可能与当前激活标签不同） */
+const renameTargetId = ref('')
 const userKeysOpen = ref(false)
 const hotkeysOpen = ref(false)
 const quickOpen = ref(false)
@@ -175,11 +179,12 @@ function command(raw: string) {
       sessions.activate(payload)
       break
     case 'rename-tab':
+      renameTargetId.value = payload
       renameValue.value = sessions.tabs.find((t) => t.id === payload)?.title ?? ''
       renameDialogOpen.value = true
       break
     case 'confirm-rename':
-      sessions.renameTab(sessions.activeTabId, renameValue.value)
+      sessions.renameTab(renameTargetId.value || sessions.activeTabId, renameValue.value)
       renameDialogOpen.value = false
       break
     case 'edit-copy':
@@ -199,6 +204,9 @@ function command(raw: string) {
       break
     case 'session-manager':
       sessionManagerOpen.value = true
+      break
+    case 'local-sessions':
+      localSessionsOpen.value = true
       break
     case 'user-keys':
       userKeysOpen.value = true
@@ -414,6 +422,7 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
     <PromptDialog />
     <ImportDialog v-model:open="importDialogOpen" />
     <SessionManagerDialog v-model:open="sessionManagerOpen" />
+    <LocalSessionDialog v-model:open="localSessionsOpen" />
     <UserKeysDialog v-model:open="userKeysOpen" />
     <QuickConnectDialog v-model:open="quickOpen" :initial="quickInfo" />
 

@@ -134,6 +134,14 @@ export interface SessionTab {
   rows: number
 }
 
+/** 本地终端会话配置：会话名 + 打开终端时的默认工作路径 */
+export interface LocalTermSession {
+  id: string
+  name: string
+  /** 空 = 用主目录 */
+  path: string
+}
+
 /* ---------- 传输队列 ---------- */
 
 export type TransferStatus = 'queued' | 'running' | 'paused' | 'done' | 'cancelled' | 'failed'

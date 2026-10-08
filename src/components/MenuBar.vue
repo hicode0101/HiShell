@@ -51,6 +51,8 @@ const menus = computed<MenuDef[]>(() => [
   {
     label: t('menus.tools'),
     children: [
+      { label: t('menus.localSessions'), command: 'local-sessions' },
+      { separator: true },
       { label: t('menus.sessionManager'), command: 'session-manager' },
       { label: t('menus.userKeys'), command: 'user-keys' },
       { separator: true },

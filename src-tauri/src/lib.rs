@@ -82,6 +82,8 @@ pub fn run() {
             commands::local::local_write,
             commands::local::local_resize,
             commands::local::local_stop,
+            commands::local_profiles::local_session_list,
+            commands::local_profiles::local_session_save,
         ])
         .setup(|_app| {
             // 启动完全打开后异步清理历史临时配置（快速连接每次连接都会落盘一份，

@@ -4,7 +4,7 @@
  * - 浏览器环境：mock 实现（本地文件树/模拟传输），便于 UI 预览
  */
 import { isTauri, tauriInvoke } from './adapter'
-import type { DirEntry, RemoteFileContent, SshProfile, ForwardRule } from './types'
+import type { DirEntry, LocalTermSession, RemoteFileContent, SshProfile, ForwardRule } from './types'
 import pkg from '../../package.json'
 
 /* ==================== 事件订阅 ==================== */
@@ -522,8 +522,8 @@ export async function userKeyWriteText(path: string, content: string): Promise<v
 
 /* ==================== 本地终端（PTY） ==================== */
 
-export async function localStart(): Promise<number> {
-  return tauriInvoke<number>('local_start')
+export async function localStart(cwd?: string): Promise<number> {
+  return tauriInvoke<number>('local_start', { cwd: cwd ?? null })
 }
 
 export async function localWrite(lid: number, bytes: Uint8Array): Promise<void> {
@@ -536,6 +536,16 @@ export async function localResize(lid: number, cols: number, rows: number): Prom
 
 export async function localStop(lid: number): Promise<void> {
   return tauriInvoke<void>('local_stop', { lid })
+}
+
+/* ==================== 本地终端会话配置 ==================== */
+
+export async function localSessionList(): Promise<LocalTermSession[]> {
+  return tauriInvoke<LocalTermSession[]>('local_session_list')
+}
+
+export async function localSessionSave(items: LocalTermSession[]): Promise<void> {
+  return tauriInvoke<void>('local_session_save', { items })
 }
 
 /* ==================== Mock 实现（浏览器预览） ==================== */

@@ -209,11 +209,12 @@ export const useSessionsStore = defineStore('sessions', {
         if (message) tab.statusMessage = message
       }
     },
-    /** 新建本地终端标签：tauri 走 local_start（PTY），浏览器 mock 模拟 shell */
-    createLocalTab(): SessionTab {
+    /** 新建本地终端标签：tauri 走 local_start（PTY），浏览器 mock 模拟 shell。
+     * opts.name/path 来自「本地终端会话」配置：名称作标签标题，path 为起始工作目录 */
+    createLocalTab(opts?: { name?: string; path?: string }): SessionTab {
       const raw = makeTab({
         kind: 'local',
-        title: t('tabs.localTerminal'),
+        title: opts?.name || t('tabs.localTerminal'),
         address: 'local',
         status: 'connected',
       })
@@ -221,7 +222,7 @@ export const useSessionsStore = defineStore('sessions', {
       const tab = this.tabs[this.tabs.length - 1] as SessionTab
       this.activeTabId = tab.id
       if (isTauri) {
-        localStart()
+        localStart(opts?.path)
           .then((lid) => {
             tab.lid = lid
           })
