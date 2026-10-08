@@ -27,6 +27,9 @@ let suppressClick = false
 function onTabMouseDown(e: MouseEvent, tab: SessionTab) {
   if (e.button !== 0) return
   if ((e.target as HTMLElement).closest('.tab-close')) return
+  // 先阻止默认行为：WebKit 从 mousedown 就开始文字选取（user-select 稍后设置拦不住），
+  // 选区建立后继续拖动会升级成原生文字拖拽——macOS 上表现为系统毛玻璃拖影。
+  e.preventDefault()
   pressId = tab.id
   pressX = e.clientX
   pressY = e.clientY
@@ -200,6 +203,9 @@ function tabAccent(tab: SessionTab): string {
   gap: 2px;
   flex: none;
   position: relative;
+  /* 标签文字不参与选取、元素不可原生拖拽（拖拽误选/毛玻璃拖影兜底） */
+  -webkit-user-select: none;
+  user-select: none;
 }
 .tab {
   display: flex;
