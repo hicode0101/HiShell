@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { t } from '../i18n'
 import { useSessionsStore } from '../stores/sessions'
 import { COPY_SHORTCUT, PASTE_SHORTCUT } from '../utils/platform'
@@ -89,15 +89,150 @@ const menus = computed<MenuDef[]>(() => [
 ])
 
 function toggle(label: string) {
+  itemIndex.value = -1
   openMenu.value = openMenu.value === label ? '' : label
 }
 function hover(label: string) {
-  if (openMenu.value) openMenu.value = label
+  if (openMenu.value) {
+    itemIndex.value = -1
+    openMenu.value = label
+  }
 }
 function run(command: string) {
   openMenu.value = ''
+  itemIndex.value = -1
   if (command) emit('command', command)
 }
+
+/* ---------- 键盘助记键与菜单键盘导航 ----------
+ * Windows/Linux 惯例：Alt+字母 打开/收起对应顶级菜单（字母取标签尾部 (X)，与具体布局无关）；
+ * 菜单打开后：字母 跳顶级菜单、←→ 切换、↑↓ 移动条目、回车执行、Esc 关闭；单独按 Alt 打开/收起首菜单。
+ * macOS 不拦截：Option+字母 是特殊字符输入（平台惯例不同），菜单保持鼠标操作，
+ * 且 Cmd 系快捷键由 MainView 的全局分发器处理（metaKey 已覆盖）。 */
+const isMac = /mac|iphone|ipad/i.test(navigator.platform)
+const itemIndex = ref(-1)
+let altAlone = false
+
+function mnemonicOf(label: string): string {
+  const m = label.match(/[（(]([A-Za-z])[)）]$/)
+  return m ? m[1].toLowerCase() : ''
+}
+
+/** 可键盘选择的条目（跳过分割线与禁用项）在 children 中的下标 */
+function actionableIdxs(menu: MenuDef): number[] {
+  const out: number[] = []
+  menu.children.forEach((c, i) => {
+    if (!c.separator && !c.disabled && c.label !== undefined) out.push(i)
+  })
+  return out
+}
+
+function openByLetter(letter: string): boolean {
+  const menu = menus.value.find((m) => mnemonicOf(m.label) === letter)
+  if (!menu) return false
+  itemIndex.value = -1
+  openMenu.value = openMenu.value === menu.label ? '' : menu.label
+  return true
+}
+
+function onMenuKeydown(e: KeyboardEvent) {
+  if (e.key === 'Alt') {
+    // AltGr（欧洲键盘）会同时带 ctrlKey，排除掉避免误触发
+    if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.shiftKey) altAlone = true
+    return
+  }
+  altAlone = false
+
+  // Alt+字母 → 打开/收起对应顶级菜单；未匹配到助记键的放行（如 Alt+N 新建连接、Alt+L 本地终端）
+  if (!isMac && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^[a-z]$/i.test(e.key)) {
+    if (openByLetter(e.key.toLowerCase())) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    return
+  }
+
+  if (!openMenu.value) return
+  const menu = menus.value.find((m) => m.label === openMenu.value)
+  if (!menu) return
+  const target = e.target as HTMLElement | null
+  const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+
+  switch (e.key) {
+    case 'Escape':
+      openMenu.value = ''
+      itemIndex.value = -1
+      e.preventDefault()
+      e.stopPropagation()
+      break
+    case 'ArrowRight':
+    case 'ArrowLeft': {
+      const n = menus.value.length
+      const idx = menus.value.findIndex((m) => m.label === openMenu.value)
+      const next = menus.value[(idx + (e.key === 'ArrowRight' ? 1 : n - 1)) % n]
+      openMenu.value = next.label
+      itemIndex.value = -1
+      e.preventDefault()
+      e.stopPropagation()
+      break
+    }
+    case 'ArrowDown':
+    case 'ArrowUp': {
+      if (typing) return
+      const idxs = actionableIdxs(menu)
+      if (!idxs.length) return
+      const dir = e.key === 'ArrowDown' ? 1 : -1
+      itemIndex.value =
+        itemIndex.value < 0
+          ? dir > 0
+            ? idxs[0]
+            : idxs[idxs.length - 1]
+          : idxs[(idxs.indexOf(itemIndex.value) + dir + idxs.length) % idxs.length]
+      e.preventDefault()
+      e.stopPropagation()
+      break
+    }
+    case 'Enter': {
+      if (typing || itemIndex.value < 0) return
+      const item = menu.children[itemIndex.value]
+      if (item && !item.separator && !item.disabled && item.command) {
+        e.preventDefault()
+        e.stopPropagation()
+        run(item.command)
+      }
+      break
+    }
+    default: {
+      // 菜单打开时直接按字母 → 跳到对应顶级菜单
+      if (!typing && !isMac && !e.altKey && !e.ctrlKey && !e.metaKey && /^[a-z]$/i.test(e.key)) {
+        if (openByLetter(e.key.toLowerCase())) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
+      }
+    }
+  }
+}
+
+function onMenuKeyup(e: KeyboardEvent) {
+  if (e.key !== 'Alt' || !altAlone) return
+  altAlone = false
+  itemIndex.value = -1
+  openMenu.value = openMenu.value ? '' : menus.value[0]?.label ?? ''
+}
+
+function onWinBlur() {
+  altAlone = false
+}
+
+window.addEventListener('keydown', onMenuKeydown, true)
+window.addEventListener('keyup', onMenuKeyup)
+window.addEventListener('blur', onWinBlur)
+onUnmounted(() => {
+  window.removeEventListener('keydown', onMenuKeydown, true)
+  window.removeEventListener('keyup', onMenuKeyup)
+  window.removeEventListener('blur', onWinBlur)
+})
 
 function onDocDown(e: MouseEvent) {
   const el = document.querySelector('.menubar')
@@ -123,7 +258,7 @@ if (typeof document !== 'undefined') document.addEventListener('mousedown', onDo
           <div
             v-else
             class="menu-item"
-            :class="{ disabled: item.disabled, danger: item.command === 'exit' }"
+            :class="{ disabled: item.disabled, danger: item.command === 'exit', 'kb-focus': openMenu === menu.label && itemIndex === i }"
             @click.stop="!item.disabled && run(item.command ?? '')"
           >
             <span class="menu-check">{{ item.checked ? '✓' : '' }}</span>
@@ -187,6 +322,10 @@ if (typeof document !== 'undefined') document.addEventListener('mousedown', onDo
   white-space: nowrap;
 }
 .menu-item:hover {
+  background: var(--bg-alt-hover);
+}
+/* 键盘 ↑↓ 选中态（与鼠标 hover 同色） */
+.menu-item.kb-focus {
   background: var(--bg-alt-hover);
 }
 .menu-item.disabled {

@@ -50,13 +50,13 @@ export default {
 
 
   menus: {
-    file: 'File',
-    edit: 'Edit',
+    file: 'File(F)',
+    edit: 'Edit(E)',
     view: 'View',
-    tools: 'Tools',
-    tabs: 'Tabs',
-    window: 'Window',
-    help: 'Help',
+    tools: 'Tools(T)',
+    tabs: 'Tabs(S)',
+    window: 'Window(W)',
+    help: 'Help(H)',
     newConnection: 'New SSH Connection',
     newSftp: 'New SFTP',
     newLocalTerminal: 'New Local Terminal',
