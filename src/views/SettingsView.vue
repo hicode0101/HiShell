@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useSettingsStore, ACCENT_PRESETS, type TerminalColorScheme } from '../stores/settings'
-import { FButton, FComboBox, toast } from '../ui'
+import { FButton, FComboBox, FSwitch, FTextBox, FConfirmDialog, toast } from '../ui'
 import { t, type LangPref } from '../i18n'
+import { isTauri } from '../api/adapter'
+import { mcpConfigGet, mcpConfigSave, mcpTokenRegen, type McpConfigInfo } from '../api/backend'
 
 const settings = useSettingsStore()
 
@@ -10,9 +12,13 @@ const nav = computed(() => [
   { id: 'appearance', label: t('settings.appearance'), icon: '★' },
   { id: 'terminal', label: t('settings.terminalNav'), icon: '>' },
   { id: 'connection', label: t('settings.connection'), icon: '⇄' },
+  { id: 'mcp', label: t('settings.mcpNav'), icon: '⚡' },
   { id: 'update', label: t('settings.update'), icon: '↓' },
 ])
-const activeNav = ref('appearance')
+const activeNav = computed({
+  get: () => settings.settingsNav,
+  set: (id: string) => settings.setSettingsNav(id),
+})
 
 /* 语言（跟随系统 / English / 简体中文） */
 const LANG_OPTIONS: { pref: LangPref; fixedLabel: string }[] = [
@@ -74,6 +80,121 @@ const schemeModel = computed({
     if (s) settings.patch({ terminalColorScheme: s.value })
   },
 })
+
+/* ==================== MCP Server ==================== */
+
+const mcp = reactive({
+  loaded: false,
+  enabled: false,
+  listenHost: '127.0.0.1',
+  port: '9500',
+  token: '',
+  running: false,
+  error: '',
+})
+
+function syncMcp(c: McpConfigInfo) {
+  mcp.loaded = true
+  mcp.enabled = c.enabled
+  mcp.listenHost = c.listenHost
+  mcp.port = String(c.port)
+  mcp.token = c.token
+  mcp.running = c.running
+  mcp.error = c.error ?? ''
+}
+
+onMounted(async () => {
+  if (!isTauri) return
+  try {
+    syncMcp(await mcpConfigGet())
+  } catch {
+    /* 后端未就绪等场景忽略，保留默认展示 */
+  }
+})
+
+/** 开关 / 网络配置统一走这里：保存并按需启停（enabled=true 时按新地址启动或重启） */
+async function mcpApply(enabled: boolean) {
+  try {
+    const c = await mcpConfigSave(enabled, mcp.listenHost.trim(), Number(mcp.port) || 0)
+    syncMcp(c)
+    toast(enabled ? t('settings.mcp.startedToast') : t('settings.mcp.stoppedToast'), 'success')
+  } catch (e) {
+    toast(String(e), 'error')
+    // 回显真实状态（端口占用等失败场景后端会返回当前实际配置）
+    try {
+      syncMcp(await mcpConfigGet())
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* 恢复默认参数（二次确认）：服务关闭 + 127.0.0.1:9500，访问密钥保持不变 */
+const mcpResetOpen = ref(false)
+async function mcpReset() {
+  try {
+    syncMcp(await mcpConfigSave(false, '127.0.0.1', 9500))
+    toast(t('settings.mcp.resetToast'), 'success')
+  } catch (e) {
+    toast(String(e), 'error')
+  }
+}
+
+/* 重新生成密钥（二次确认：旧密钥即刻失效） */
+const regenOpen = ref(false)
+async function mcpRegen() {
+  try {
+    syncMcp(await mcpTokenRegen())
+    toast(t('settings.mcp.tokenRegenToast'), 'success')
+  } catch (e) {
+    toast(String(e), 'error')
+  }
+}
+
+/* 客户端配置片段（Claude Code / ZCode / Trae JSON，Codex TOML） */
+const MCP_CLIENTS = ['claudeCode', 'zcode', 'trae', 'codex'] as const
+type McpClientKey = (typeof MCP_CLIENTS)[number]
+const mcpClient = ref<McpClientKey>('claudeCode')
+
+const mcpUrl = computed(() => `http://${mcp.listenHost}:${mcp.port}/mcp`)
+const mcpSnippets = computed<Record<McpClientKey, { label: string; content: string }>>(() => {
+  const auth = { Authorization: `Bearer ${mcp.token}` }
+  return {
+    claudeCode: {
+      label: 'Claude Code',
+      content: JSON.stringify({ mcpServers: { hishell: { type: 'http', url: mcpUrl.value, headers: auth } } }, null, 2),
+    },
+    zcode: {
+      label: 'ZCode',
+      // ZCode「MCP 设置 → JSON 编辑」直接可粘贴的格式：{ mcpServers: {...} }
+      content: JSON.stringify({ mcpServers: { hishell: { type: 'http', url: mcpUrl.value, headers: auth } } }, null, 2),
+    },
+    trae: {
+      label: 'Trae',
+      content: JSON.stringify({ mcpServers: { hishell: { url: mcpUrl.value, headers: auth } } }, null, 2),
+    },
+    codex: {
+      label: 'Codex',
+      content: `[mcp_servers.hishell]\nurl = "${mcpUrl.value}"\nhttp_headers = { Authorization = "Bearer ${mcp.token}" }`,
+    },
+  }
+})
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    ta.remove()
+  }
+  toast(t('settings.mcp.copiedToast'), 'success')
+}
 </script>
 
 <template>
@@ -156,6 +277,106 @@ const schemeModel = computed({
         <div class="sv-block">
           <div class="sv-hint">{{ t('settings.connectionHint') }}</div>
         </div>
+      </template>
+
+      <template v-else-if="activeNav === 'mcp'">
+        <div class="sv-title">{{ t('settings.mcpNav') }}</div>
+
+        <!-- 服务开关 -->
+        <div class="sv-block mcp-service">
+          <div class="mcp-service-text">
+            <div class="sv-row-label">{{ t('settings.mcp.service') }}</div>
+            <div class="sv-hint">{{ t('settings.mcp.serviceHint') }}</div>
+          </div>
+          <div class="mcp-service-ctl">
+            <span class="mcp-badge" :class="{ on: mcp.running }">
+              {{ mcp.running ? t('settings.mcp.running') : t('settings.mcp.stopped') }}
+            </span>
+            <FSwitch :model-value="mcp.enabled" @update:model-value="(v: boolean) => mcpApply(v)" />
+          </div>
+        </div>
+        <div v-if="mcp.error" class="mcp-error">{{ mcp.error }}</div>
+
+        <!-- 实时显示 AI 操作 -->
+        <div class="sv-block mcp-service">
+          <div class="mcp-service-text">
+            <div class="sv-row-label">{{ t('settings.mcp.showActivity') }}</div>
+            <div class="sv-hint">{{ t('settings.mcp.showActivityHint') }}</div>
+          </div>
+          <div class="mcp-service-ctl">
+            <FSwitch :model-value="settings.s.mcpShowActivity" @update:model-value="(v: boolean) => settings.patch({ mcpShowActivity: v })" />
+          </div>
+        </div>
+
+        <!-- 监听配置 -->
+        <div class="sv-block">
+          <div class="sv-row-label">{{ t('settings.mcp.network') }}</div>
+          <div class="sv-grid">
+            <span class="sv-label">{{ t('settings.mcp.listenHost') }}</span>
+            <FTextBox v-model="mcp.listenHost" placeholder="127.0.0.1" />
+            <span class="sv-label">{{ t('settings.mcp.port') }}</span>
+            <FTextBox v-model="mcp.port" placeholder="9500" class="mcp-port" />
+          </div>
+          <div class="sv-hint mcp-hint">{{ t('settings.mcp.networkHint') }}</div>
+          <FButton @click="mcpApply(mcp.enabled)">{{ t('settings.mcp.apply') }}</FButton>
+        </div>
+
+        <!-- 访问密钥 -->
+        <div class="sv-block">
+          <div class="sv-row-label">{{ t('settings.mcp.token') }}</div>
+          <div class="mcp-token">{{ mcp.token || '—' }}</div>
+          <div class="mcp-btn-row">
+            <FButton :disabled="!mcp.token" @click="copyText(mcp.token)">{{ t('settings.mcp.copyToken') }}</FButton>
+            <FButton variant="danger" :disabled="!mcp.token" @click="regenOpen = true">{{ t('settings.mcp.regenToken') }}</FButton>
+          </div>
+          <div class="sv-hint mcp-hint">{{ t('settings.mcp.tokenHint') }}</div>
+        </div>
+
+        <!-- 客户端配置一键复制 -->
+        <div class="sv-block">
+          <div class="sv-row-label">{{ t('settings.mcp.clients') }}</div>
+          <div class="mcp-tabs">
+            <button
+              v-for="key in MCP_CLIENTS"
+              :key="key"
+              class="mcp-tab"
+              :class="{ on: mcpClient === key }"
+              @click="mcpClient = key"
+            >
+              {{ mcpSnippets[key].label }}
+            </button>
+          </div>
+          <pre class="mcp-code">{{ mcpSnippets[mcpClient].content }}</pre>
+          <div class="mcp-btn-row">
+            <FButton variant="accent" @click="copyText(mcpSnippets[mcpClient].content)">{{ t('settings.mcp.copyConfig') }}</FButton>
+          </div>
+          <div class="sv-hint mcp-hint">{{ t('settings.mcp.clientsHint') }}</div>
+        </div>
+
+        <!-- 安全提示 -->
+        <div class="sv-block">
+          <div class="sv-hint mcp-security">{{ t('settings.mcp.securityHint') }}</div>
+        </div>
+
+        <!-- 恢复默认 -->
+        <div class="sv-block mcp-reset-row">
+          <FButton variant="danger" @click="mcpResetOpen = true">{{ t('settings.mcp.reset') }}</FButton>
+        </div>
+
+        <FConfirmDialog
+          v-model:open="regenOpen"
+          :title="t('settings.mcp.regenToken')"
+          :message="t('settings.mcp.regenConfirm')"
+          :confirm-text="t('settings.mcp.regenToken')"
+          @confirm="mcpRegen"
+        />
+        <FConfirmDialog
+          v-model:open="mcpResetOpen"
+          :title="t('settings.mcp.reset')"
+          :message="t('settings.mcp.resetConfirm')"
+          :confirm-text="t('settings.mcp.reset')"
+          @confirm="mcpReset"
+        />
       </template>
 
       <template v-else-if="activeNav === 'update'">
@@ -314,5 +535,116 @@ const schemeModel = computed({
 }
 .accent-dot.on {
   outline-color: var(--accent);
+}
+
+/* ==================== MCP Server ==================== */
+.mcp-service {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.mcp-service-text {
+  flex: 1;
+  min-width: 0;
+}
+.mcp-service-ctl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding-top: 2px;
+}
+.mcp-badge {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke-divider);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.mcp-badge.on {
+  color: var(--accent-text-on);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.mcp-error {
+  color: var(--danger);
+  font-size: 12.5px;
+  margin: -12px 0 20px;
+}
+.mcp-port {
+  width: 140px;
+}
+.mcp-hint {
+  margin: 10px 0 12px;
+}
+.mcp-token {
+  font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  background: var(--bg-alt-hover);
+  border: 1px solid var(--stroke-divider);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  word-break: break-all;
+  user-select: all;
+  margin-bottom: 12px;
+}
+.mcp-btn-row {
+  display: flex;
+  gap: 10px;
+}
+.mcp-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.mcp-tab {
+  border: 1px solid var(--stroke-divider);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.mcp-tab:hover {
+  background: var(--bg-alt-hover);
+}
+.mcp-tab.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text-on);
+  font-weight: 600;
+}
+.mcp-code {
+  font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--bg-alt-hover);
+  border: 1px solid var(--stroke-divider);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 280px;
+  overflow: auto;
+  user-select: all;
+  margin: 0 0 12px;
+}
+.mcp-security {
+  border: 1px solid var(--stroke-divider);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  background: var(--bg-alt-hover);
+}
+.mcp-reset-row {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px dashed var(--stroke-divider);
 }
 </style>

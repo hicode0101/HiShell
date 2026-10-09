@@ -16,6 +16,8 @@ export interface AppSettings {
   terminalColorScheme: TerminalColorScheme
   /** SFTP 文件栏收藏路径（本地 / 远程各自独立） */
   sftpFavorites: { local: string[]; remote: string[] }
+  /** 实时显示 AI 通过 MCP 执行的操作（主窗口右下角活动面板），默认关闭 */
+  mcpShowActivity: boolean
 }
 
 export type SftpSide = 'local' | 'remote'
@@ -33,6 +35,7 @@ function defaults(): AppSettings {
     terminalFontSize: 14,
     terminalColorScheme: 'dark',
     sftpFavorites: { local: [], remote: [] },
+    mcpShowActivity: false,
   }
 }
 
@@ -47,12 +50,16 @@ function load(): AppSettings {
 }
 
 export const useSettingsStore = defineStore('settings', {
-  state: () => ({ s: load() as AppSettings }),
+  state: () => ({ s: load() as AppSettings, settingsNav: 'appearance' }),
   getters: {
     theme: (st) => st.s.theme,
     accent: (st) => st.s.accent,
   },
   actions: {
+    /** 设置页当前子选项卡（内存态）：切换主 tab 不丢失，关 tab 随会话走 */
+    setSettingsNav(id: string) {
+      this.settingsNav = id
+    },
     patch(p: Partial<AppSettings>) {
       this.s = { ...this.s, ...p }
       localStorage.setItem(LS_KEY, JSON.stringify(this.s))

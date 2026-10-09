@@ -60,6 +60,9 @@ fn make_profile(host: &str, port: u16, user: &str, id: &str) -> Profile {
         private_key_path: String::new(),
         private_key_passphrase: String::new(),
         has_stored_passphrase: false,
+        user_key_name: String::new(),
+        temporary: false,
+        mcp_authorized: false,
         proxy: ProxyConfig::None,
         keepalive_interval: 5000,
         keepalive_count_max: 3,
@@ -106,6 +109,7 @@ async fn run_e2e() -> Result<(), Box<dyn std::error::Error>> {
 
     let shared = Arc::new(SessionShared {
         sid: 9001,
+        profile_id: profile_id.to_string(),
         emit: Arc::new(move |event: &str, payload: serde_json::Value| {
             println!("[e2e][event] {event}: {payload}");
         }),

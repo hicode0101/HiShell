@@ -82,3 +82,34 @@ pub fn delete(profile_id: &str) {
         let _ = fallback_save(&map);
     }
 }
+
+/* ---------------- MCP Server 访问令牌（独立条目，不在连接配置命名空间内） ---------------- */
+
+const SERVICE_MCP: &str = "hishell.mcp";
+const MCP_TOKEN_KEY: &str = "token";
+
+fn mcp_entry() -> keyring::Entry {
+    keyring::Entry::new(SERVICE_MCP, MCP_TOKEN_KEY).expect("keyring entry")
+}
+
+/// 读取 MCP 访问令牌（keyring 优先，回落文件兜底）
+pub fn mcp_token() -> Option<String> {
+    if let Ok(raw) = mcp_entry().get_password() {
+        return Some(raw);
+    }
+    let key = format!("{SERVICE_MCP}.{MCP_TOKEN_KEY}");
+    fallback_load().get(&key).and_then(|v| b64d(v))
+}
+
+/// 写入 MCP 访问令牌
+pub fn set_mcp_token(token: &str) -> AppResult<()> {
+    match mcp_entry().set_password(token) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            let key = format!("{SERVICE_MCP}.{MCP_TOKEN_KEY}");
+            let mut map = fallback_load();
+            map.insert(key, b64e(token));
+            fallback_save(&map)
+        }
+    }
+}

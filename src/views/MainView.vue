@@ -17,6 +17,7 @@ import SessionManagerDialog from '../components/SessionManagerDialog.vue'
 import LocalSessionDialog from '../components/LocalSessionDialog.vue'
 import UserKeysDialog from '../components/UserKeysDialog.vue'
 import SettingsView from './SettingsView.vue'
+import McpActivityPanel from '../components/McpActivityPanel.vue'
 import { FButton, FDialog, FTextBox, FConfirmDialog, toast } from '../ui'
 import { useSessionsStore } from '../stores/sessions'
 import { useTransfersStore } from '../stores/transfers'
@@ -417,6 +418,7 @@ function isHidden(tab: { kind: SessionTab['kind']; viewMode: SessionTab['viewMod
       </div>
     </div>
 
+    <McpActivityPanel />
     <StatusBar />
     <PortForwardDialog />
     <PromptDialog />

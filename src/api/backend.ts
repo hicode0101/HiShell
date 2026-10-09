@@ -548,6 +548,45 @@ export async function localSessionSave(items: LocalTermSession[]): Promise<void>
   return tauriInvoke<void>('local_session_save', { items })
 }
 
+/* ==================== MCP Server ==================== */
+
+export interface McpConfigInfo {
+  enabled: boolean
+  listenHost: string
+  port: number
+  /** 访问令牌（客户端配置 JSON 用） */
+  token: string
+  /** 服务当前是否运行中 */
+  running: boolean
+  error?: string | null
+}
+
+/** MCP 工具调用实时活动事件（start/done 两阶段，按 callId 配对） */
+export interface McpActivityEvent {
+  callId: number
+  phase: 'start' | 'done'
+  tool: string
+  args?: Record<string, unknown>
+  ok?: boolean
+  error?: string
+  /** 耗时毫秒（done 阶段） */
+  ms?: number
+}
+
+export async function mcpConfigGet(): Promise<McpConfigInfo> {
+  return tauriInvoke<McpConfigInfo>('mcp_config_get')
+}
+
+/** 保存并立即生效：enabled=true 启动（或按新地址重启），false 停止 */
+export async function mcpConfigSave(enabled: boolean, listenHost: string, port: number): Promise<McpConfigInfo> {
+  return tauriInvoke<McpConfigInfo>('mcp_config_save', { enabled, listenHost, port })
+}
+
+/** 重新生成访问令牌（旧令牌立即失效，运行中自动重启） */
+export async function mcpTokenRegen(): Promise<McpConfigInfo> {
+  return tauriInvoke<McpConfigInfo>('mcp_token_regen')
+}
+
 /* ==================== Mock 实现（浏览器预览） ==================== */
 
 import { mockProfiles, mockProfileStore } from './mock'

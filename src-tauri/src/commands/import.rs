@@ -66,6 +66,7 @@ fn to_profile(c: &ImportCandidate) -> Profile {
         forwarded_ports: vec![],
         user_key_name: String::new(),
         temporary: false,
+        mcp_authorized: false,
         behavior_on_session_end: "keep".into(),
     }
 }

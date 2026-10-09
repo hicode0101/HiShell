@@ -77,6 +77,9 @@ pub struct Profile {
     /// 快速连接临时配置：连接可用，但 profile_list 对其隐藏
     #[serde(default)]
     pub temporary: bool,
+    /// MCP 完全控制授权：开启后 MCP Server 可对该连接执行命令 / 传输文件（完全信任 AI 操作）
+    #[serde(default, rename = "mcpAuthorized")]
+    pub mcp_authorized: bool,
     pub proxy: ProxyConfig,
     #[serde(rename = "keepaliveInterval")]
     pub keepalive_interval: u64,
@@ -131,6 +134,7 @@ fn base_profile() -> Profile {
         has_stored_passphrase: false,
         user_key_name: String::new(),
         temporary: false,
+        mcp_authorized: false,
         proxy: ProxyConfig::None,
         keepalive_interval: 5000,
         keepalive_count_max: 10,

@@ -4,6 +4,7 @@ pub mod fs;
 pub mod import;
 pub mod local;
 pub mod local_profiles;
+pub mod mcp;
 pub mod profiles;
 pub mod sftp;
 pub mod ssh;

@@ -198,6 +198,7 @@ async function importProfiles() {
         <div class="sm-main">
           <div class="sm-name">
             {{ row.profile.name }}
+            <span v-if="row.profile.mcpAuthorized" class="sm-mcp" :title="t('sessions.mcpBadgeTip')">MCP</span>
             <span v-if="row.proxy" class="sm-proxy">{{ row.proxy }}</span>
           </div>
           <div class="sm-addr">{{ row.addr }} · {{ authLabel(row.profile.auth) }}</div>
@@ -322,6 +323,16 @@ async function importProfiles() {
   font-weight: 500;
   color: var(--accent);
   background: var(--accent-light);
+  border-radius: 9px;
+  padding: 1px 8px;
+}
+/* MCP 授权标识：橙色胶囊（两种主题下均保持可辨识的橙） */
+.sm-mcp {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #f7630c;
+  background: rgba(247, 99, 12, 0.14);
   border-radius: 9px;
   padding: 1px 8px;
 }

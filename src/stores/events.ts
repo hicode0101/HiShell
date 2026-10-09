@@ -9,11 +9,13 @@ import {
   type TransferDoneEvent,
   type LocalDataEvent,
   type LocalStatusEvent,
+  type McpActivityEvent,
   b64ToBytes,
 } from '../api/backend'
 import { useSessionsStore } from './sessions'
 import { useProfilesStore } from './profiles'
 import { useTransfersStore } from './transfers'
+import { useMcpActivityStore } from './mcpActivity'
 import { forwardAdd } from '../api/backend'
 import { t } from '../i18n'
 
@@ -123,5 +125,9 @@ export function initGlobalEvents() {
 
   listenEvent<LocalStatusEvent>('local-status', (e) => {
     sessions.setStatusByLid(e.lid, 'disconnected', t('terminal.localExited'))
+  })
+
+  listenEvent<McpActivityEvent>('mcp-activity', (e) => {
+    useMcpActivityStore().handle(e)
   })
 }

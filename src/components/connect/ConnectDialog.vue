@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { FButton, FTextBox, FComboBox, FRadioGroup, FDialog, toast } from '../../ui'
+import { FButton, FTextBox, FComboBox, FRadioGroup, FDialog, FCheckbox, toast } from '../../ui'
 import { useProfilesStore } from '../../stores/profiles'
 import { useSessionsStore } from '../../stores/sessions'
 import { defaultProfile, type AuthKind, type ProxyConfig, type SshProfile } from '../../api/types'
@@ -284,6 +284,12 @@ function resetOtherAuthFields() {
   if (authKind.value !== 'priFileKey' && authKind.value !== 'userKey') form.privateKeyPassphrase = ''
 }
 
+/** MCP 授权（SshProfile 中为可选字段，转成确定布尔值驱动勾选框） */
+const mcpAuthorizedModel = computed({
+  get: () => !!form.mcpAuthorized,
+  set: (v: boolean) => (form.mcpAuthorized = v),
+})
+
 async function saveProfile() {
   form.auth = authKind.value
   form.proxy = buildProxy()
@@ -442,6 +448,15 @@ async function connectNow() {
       <FTextBox v-model="form.connectTimeout" placeholder="10000（1000–600000 ms）" class="cd-port" :class="{ 'cd-invalid': showErr && errs.timeout }" />
     </div>
 
+    <div class="cd-section">{{ t('connect.mcpSection') }}</div>
+    <div class="cd-grid">
+      <span class="cd-label">{{ t('connect.mcpAuthLabel') }}</span>
+      <div>
+        <FCheckbox v-model="mcpAuthorizedModel" :label="t('connect.mcpAuthCheckbox')" />
+      </div>
+    </div>
+    <div class="cd-hint cd-mcp-hint">{{ t('connect.mcpHint') }}</div>
+
     <template #footer>
       <FButton variant="subtle" :disabled="testing" @click="testConnection">{{ testing ? t('common.testing') : t('common.testConnection') }}</FButton>
       <div class="footer-spacer" />
@@ -494,6 +509,9 @@ async function connectNow() {
 .cd-proxy-fields {
   margin-top: 12px;
   padding-left: 8px;
+}
+.cd-mcp-hint {
+  margin: 8px 0 0 108px;
 }
 .footer-spacer {
   flex: 1;

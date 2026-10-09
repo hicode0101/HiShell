@@ -68,6 +68,8 @@ export interface SshProfile {
   userKeyName: string
   /** 快速连接的临时配置：真实入库（连接需要）但对所有列表隐藏，不算用户会话 */
   temporary?: boolean
+  /** 授权 MCP 完全控制：开启后 AI 可通过 MCP Server 对该连接执行命令/传输文件 */
+  mcpAuthorized?: boolean
   proxy: ProxyConfig
   keepaliveInterval: number
   keepaliveCountMax: number
@@ -106,6 +108,7 @@ export function defaultProfile(partial: Partial<SshProfile> = {}): SshProfile {
     term: 'xterm-256color',
     forwardedPorts: [],
     behaviorOnSessionEnd: 'keep',
+    mcpAuthorized: false,
     ...partial,
   }
 }

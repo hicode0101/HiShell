@@ -4,12 +4,14 @@ mod commands;
 mod error;
 mod known_hosts;
 mod logger;
+mod mcp;
 mod paths;
 pub mod profile_store;
 pub mod secrets;
 pub mod ssh;
 
 use ssh::{Sessions, Transfers};
+use tauri::Manager;
 
 pub fn run() {
     let _ = paths::ensure_config_dir();
@@ -84,8 +86,11 @@ pub fn run() {
             commands::local::local_stop,
             commands::local_profiles::local_session_list,
             commands::local_profiles::local_session_save,
+            commands::mcp::mcp_config_get,
+            commands::mcp::mcp_config_save,
+            commands::mcp::mcp_token_regen,
         ])
-        .setup(|_app| {
+        .setup(|app| {
             // 启动完全打开后异步清理历史临时配置（快速连接每次连接都会落盘一份，
             // 对列表隐藏且无入口删除，反复使用会无限累积）。
             // 延迟数秒 + 独立后台线程执行：避开启动阶段的磁盘/凭据管理器争抢，
@@ -95,6 +100,21 @@ pub fn run() {
                 let n = profile_store::purge_temporary();
                 if n > 0 {
                     crate::logger::log(&format!("启动清理：已移除 {n} 条历史临时配置"));
+                }
+            });
+
+            // MCP Server 自启动（配置 enabled=true 时），延迟 1s 避开启动期磁盘/凭据争抢
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if mcp::store::load().enabled {
+                    let sessions = handle.state::<Sessions>().0.clone();
+                    if let Err(e) = mcp::start(&handle, sessions).await {
+                        crate::logger::log(&format!("MCP Server 自启动失败: {e}"));
+                        mcp::mark_startup_error(&e);
+                    } else {
+                        crate::logger::log("MCP Server 自启动完成");
+                    }
                 }
             });
             Ok(())
