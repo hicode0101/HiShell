@@ -1,22 +1,23 @@
 <script setup lang="ts">
 /**
  * AI 操作动态面板：实时展示智能体通过 MCP 执行的每一步操作。
- * 仅当设置「实时显示 AI 操作」开启时渲染；悬浮于主窗口右下角、状态栏之上。
+ * 仅当 MCP 服务运行中且设置「实时显示 AI 操作」开启时渲染；服务一停面板即时隐藏。
+ * 悬浮于主窗口右下角、状态栏之上。
  */
 import { computed } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useMcpActivityStore } from '../stores/mcpActivity'
+import { useMcpServerStore } from '../stores/mcpServer'
 import { useProfilesStore } from '../stores/profiles'
+import { isTauri } from '../api/adapter'
 import { t } from '../i18n'
 
 const settings = useSettingsStore()
 const activity = useMcpActivityStore()
+const mcpServer = useMcpServerStore()
 const profiles = useProfilesStore()
 
-const visible = computed(() => settings.s.mcpShowActivity && isTauriEnv())
-function isTauriEnv(): boolean {
-  return !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
-}
+const visible = computed(() => isTauri && mcpServer.running && settings.s.mcpShowActivity)
 
 function timeStr(ts: number): string {
   const d = new Date(ts)

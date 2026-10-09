@@ -247,8 +247,15 @@ export default {
   },
 
   statusbar: {
-    capsLock: 'Caps Lock',
-    numLock: 'Num Lock',
+    capsLockOn: 'Caps Lock is on',
+    capsLockOff: 'Caps Lock is off',
+    numLockOn: 'Num Lock is on',
+    numLockOff: 'Num Lock is off',
+    tabCountTip: 'Number of currently open tabs',
+    historyNav: 'Command history: press ↑ / ↓ to recall the previous / next command',
+    mcpOn: 'MCP Server is on ({host}:{port})',
+    mcpOff: 'MCP Server is off — enable it in Settings → MCP Server',
+    mcpError: 'MCP Server is enabled but not running: {error}',
     ready: 'Ready',
     tabCount: '{n} tabs',
     transfers: '{n} transferring',

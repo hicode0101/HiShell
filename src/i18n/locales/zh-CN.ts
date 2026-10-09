@@ -249,8 +249,15 @@ export default {
   },
 
   statusbar: {
-    capsLock: '大写锁定 (Caps Lock)',
-    numLock: '数字锁定 (Num Lock)',
+    capsLockOn: '大写锁定已开启 (Caps Lock)',
+    capsLockOff: '大写锁定已关闭 (Caps Lock)',
+    numLockOn: '数字锁定已开启 (Num Lock)',
+    numLockOff: '数字锁定已关闭 (Num Lock)',
+    tabCountTip: '当前打开的选项卡数量',
+    historyNav: '命令历史：按 ↑ / ↓ 翻看上一条 / 下一条命令',
+    mcpOn: 'MCP 服务已开启（{host}:{port}）',
+    mcpOff: 'MCP 服务已关闭，可在「设置 → MCP Server」开启',
+    mcpError: 'MCP 服务已开启但未运行：{error}',
     ready: '就绪',
     tabCount: '{n} 个选项卡',
     transfers: '{n} 个传输中',

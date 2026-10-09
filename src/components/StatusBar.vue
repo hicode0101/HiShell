@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSessionsStore } from '../stores/sessions'
 import { useTransfersStore } from '../stores/transfers'
+import { useMcpServerStore } from '../stores/mcpServer'
 import { t } from '../i18n'
 
 /* 大小写 / 数字键锁定状态：按键事件里读取（未按键时保持上次状态，默认熄灭） */
@@ -24,8 +25,14 @@ onMounted(() => {
 })
 onUnmounted(() => removeKeyState?.())
 
+/* 锁定键提示随当前状态变化，方便用户了解开启/关闭 */
+const capsTitle = computed(() => t(capsOn.value ? 'statusbar.capsLockOn' : 'statusbar.capsLockOff'))
+const numTitle = computed(() => t(numOn.value ? 'statusbar.numLockOn' : 'statusbar.numLockOff'))
+
 const sessions = useSessionsStore()
 const transfers = useTransfersStore()
+const mcpServer = useMcpServerStore()
+onMounted(() => mcpServer.load())
 
 const address = computed(() => {
   const tab = sessions.activeTab
@@ -38,6 +45,14 @@ const statusText = computed(() => {
   const tab = sessions.activeTab
   if (!tab || tab.kind !== 'session') return ''
   return tab.status === 'connected' ? 'SSH2' : tab.status === 'connecting' ? t('statusbar.connecting') : t('statusbar.notConnected')
+})
+
+/* MCP 服务状态灯：与 CAP/NUM 同一套配色，运行中绿色、关闭灰色；异常原因放悬停提示 */
+const mcpOn = computed(() => mcpServer.running)
+const mcpTitle = computed(() => {
+  if (mcpServer.running) return t('statusbar.mcpOn', { host: mcpServer.listenHost, port: mcpServer.port })
+  if (mcpServer.enabled && mcpServer.error) return t('statusbar.mcpError', { error: mcpServer.error })
+  return t('statusbar.mcpOff')
 })
 </script>
 
@@ -59,10 +74,11 @@ const statusText = computed(() => {
       {{ t('statusbar.transfers', { n: transfers.runningCount }) }}
     </div>
     <div class="st-spacer" />
-    <div class="st-section">{{ t('statusbar.tabCount', { n: sessions.tabs.length }) }}</div>
-    <div class="st-section chip">↑↓</div>
-    <div class="st-section chip lock" :class="{ on: capsOn }" :title="t('statusbar.capsLock')">CAP</div>
-    <div class="st-section chip lock" :class="{ on: numOn }" :title="t('statusbar.numLock')">NUM</div>
+    <div class="st-section" :title="t('statusbar.tabCountTip')">{{ t('statusbar.tabCount', { n: sessions.tabs.length }) }}</div>
+    <div class="st-section chip" :title="t('statusbar.historyNav')">↑↓</div>
+    <div class="st-section chip lock" :class="{ on: mcpOn }" :title="mcpTitle">MCP</div>
+    <div class="st-section chip lock" :class="{ on: capsOn }" :title="capsTitle">CAP</div>
+    <div class="st-section chip lock" :class="{ on: numOn }" :title="numTitle">NUM</div>
   </div>
 </template>
 

@@ -5,8 +5,10 @@ import { FButton, FComboBox, FSwitch, FTextBox, FConfirmDialog, toast } from '..
 import { t, type LangPref } from '../i18n'
 import { isTauri } from '../api/adapter'
 import { mcpConfigGet, mcpConfigSave, mcpTokenRegen, type McpConfigInfo } from '../api/backend'
+import { useMcpServerStore } from '../stores/mcpServer'
 
 const settings = useSettingsStore()
+const mcpServerStore = useMcpServerStore()
 
 const nav = computed(() => [
   { id: 'appearance', label: t('settings.appearance'), icon: '★' },
@@ -101,6 +103,7 @@ function syncMcp(c: McpConfigInfo) {
   mcp.token = c.token
   mcp.running = c.running
   mcp.error = c.error ?? ''
+  mcpServerStore.sync(c) // 同步给状态栏指示灯
 }
 
 onMounted(async () => {
@@ -151,8 +154,8 @@ async function mcpRegen() {
   }
 }
 
-/* 客户端配置片段（Claude Code / ZCode / Trae JSON，Codex TOML） */
-const MCP_CLIENTS = ['claudeCode', 'zcode', 'trae', 'codex'] as const
+/* 客户端配置片段（Claude Code / Codex JSON+TOML，ZCode / Trae JSON），标签页按此顺序展示 */
+const MCP_CLIENTS = ['claudeCode', 'codex', 'zcode', 'trae'] as const
 type McpClientKey = (typeof MCP_CLIENTS)[number]
 const mcpClient = ref<McpClientKey>('claudeCode')
 
