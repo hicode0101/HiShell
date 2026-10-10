@@ -10,12 +10,14 @@ import {
   type LocalDataEvent,
   type LocalStatusEvent,
   type McpActivityEvent,
+  type McpStatusEvent,
   b64ToBytes,
 } from '../api/backend'
 import { useSessionsStore } from './sessions'
 import { useProfilesStore } from './profiles'
 import { useTransfersStore } from './transfers'
 import { useMcpActivityStore } from './mcpActivity'
+import { useMcpServerStore } from './mcpServer'
 import { forwardAdd } from '../api/backend'
 import { t } from '../i18n'
 
@@ -129,5 +131,10 @@ export function initGlobalEvents() {
 
   listenEvent<McpActivityEvent>('mcp-activity', (e) => {
     useMcpActivityStore().handle(e)
+  })
+
+  // MCP Server 启停推送（自启动晚于页面挂载、运行中异常退出等场景，状态栏指示灯靠它保持一致）
+  listenEvent<McpStatusEvent>('mcp-status', (e) => {
+    useMcpServerStore().sync(e)
   })
 }

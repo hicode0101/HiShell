@@ -111,7 +111,7 @@ pub fn run() {
                     let sessions = handle.state::<Sessions>().0.clone();
                     if let Err(e) = mcp::start(&handle, sessions).await {
                         crate::logger::log(&format!("MCP Server 自启动失败: {e}"));
-                        mcp::mark_startup_error(&e);
+                        mcp::mark_startup_error(&handle, &e);
                     } else {
                         crate::logger::log("MCP Server 自启动完成");
                     }

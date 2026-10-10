@@ -1,7 +1,7 @@
 /** MCP Server 服务状态：状态栏指示灯与设置页共享（设置页启停/改配置后 sync 保持一致） */
 import { defineStore } from 'pinia'
 import { isTauri } from '../api/adapter'
-import { mcpConfigGet, type McpConfigInfo } from '../api/backend'
+import { mcpConfigGet, type McpStatusInfo } from '../api/backend'
 
 export const useMcpServerStore = defineStore('mcpServer', {
   state: () => ({
@@ -13,7 +13,7 @@ export const useMcpServerStore = defineStore('mcpServer', {
     error: '',
   }),
   actions: {
-    sync(c: McpConfigInfo) {
+    sync(c: McpStatusInfo) {
       this.enabled = c.enabled
       this.running = c.running
       this.listenHost = c.listenHost

@@ -46,11 +46,24 @@ pub fn status() -> McpStatus {
     }
 }
 
+/// 把当前状态推送给前端（状态栏指示灯同步）。启动/停止状态变化时调用。
+pub fn emit_status(app: &AppHandle) {
+    use tauri::Emitter;
+    let _ = app.emit("mcp-status", status());
+}
+
 /// 启动 MCP Server（已运行则先停止并等旧任务退出，再绑定新地址）。
 /// 端口绑定同步完成：失败（占用/无权限等）立即返回错误给设置页。
+/// 无论成败，结束后推送最新状态，保证状态栏指示灯与真实状态一致。
 pub async fn start(app: &AppHandle, sessions: Arc<SessionManager>) -> Result<(), String> {
+    let res = start_inner(app, sessions).await;
+    emit_status(app);
+    res
+}
+
+async fn start_inner(app: &AppHandle, sessions: Arc<SessionManager>) -> Result<(), String> {
     // 关键：等旧 serve 任务真正退出（监听 socket 已释放）再绑定，否则重启场景必报端口占用
-    stop_and_wait().await;
+    stop_and_wait(app).await;
 
     let cfg = store::load();
     let host: IpAddr = cfg
@@ -77,22 +90,25 @@ pub async fn start(app: &AppHandle, sessions: Arc<SessionManager>) -> Result<(),
 }
 
 /// 停止 MCP Server 并等待 serve 任务退出（端口释放）。未运行则无操作。
-pub async fn stop_and_wait() {
+/// 停止后推送最新状态，保证状态栏指示灯与真实状态一致。
+pub async fn stop_and_wait(app: &AppHandle) {
     let running = RUNNING.lock().unwrap().take();
     if let Some(r) = running {
         let _ = r.shutdown_tx.send(true);
         let _ = r.task.await;
     }
     *LAST_ERROR.lock().unwrap() = None;
+    emit_status(app);
 }
 
 pub fn is_running() -> bool {
     RUNNING.lock().unwrap().is_some()
 }
 
-/// 自启动失败时记录错误（start 返回 Err 的场景下 RUNNING 尚未写入，需单独留痕给状态页）
-pub fn mark_startup_error(e: &str) {
+/// 自启动失败时记录错误并推送状态（start 返回 Err 的场景下 RUNNING 尚未写入，需单独留痕给状态页）
+pub fn mark_startup_error(app: &AppHandle, e: &str) {
     *LAST_ERROR.lock().unwrap() = Some(e.to_string());
+    emit_status(app);
 }
 
 #[cfg(test)]

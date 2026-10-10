@@ -550,16 +550,23 @@ export async function localSessionSave(items: LocalTermSession[]): Promise<void>
 
 /* ==================== MCP Server ==================== */
 
-export interface McpConfigInfo {
+/** MCP 服务状态（状态栏指示灯；mcp-status 事件与配置接口共用） */
+export interface McpStatusInfo {
   enabled: boolean
   listenHost: string
   port: number
-  /** 访问令牌（客户端配置 JSON 用） */
-  token: string
   /** 服务当前是否运行中 */
   running: boolean
   error?: string | null
 }
+
+export interface McpConfigInfo extends McpStatusInfo {
+  /** 访问令牌（客户端配置 JSON 用） */
+  token: string
+}
+
+/** MCP 服务启停状态推送事件（后端启动/停止逻辑发出） */
+export interface McpStatusEvent extends McpStatusInfo {}
 
 /** MCP 工具调用实时活动事件（start/done 两阶段，按 callId 配对） */
 export interface McpActivityEvent {

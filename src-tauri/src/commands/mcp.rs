@@ -58,7 +58,7 @@ pub async fn mcp_config_save(
     if enabled {
         mcp::start(&app, sessions.0.clone()).await?;
     } else {
-        mcp::stop_and_wait().await;
+        mcp::stop_and_wait(&app).await;
     }
     Ok(config_out())
 }
