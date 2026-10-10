@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { tauriWindow } from '../api/adapter'
 import { isTauri } from '../api/adapter'
 import { showContextMenu } from '../ui'
@@ -7,6 +7,8 @@ import { t } from '../i18n'
 
 const maximizeState = ref<'maximized' | 'normal'>('normal')
 let win: Awaited<ReturnType<typeof tauriWindow>> = null
+let unlistenResize: (() => void) | null = null
+let resizeTimer: ReturnType<typeof setTimeout> | undefined
 
 async function refreshMaximized() {
   if (!win) return
@@ -20,6 +22,21 @@ async function refreshMaximized() {
 onMounted(async () => {
   win = await tauriWindow()
   await refreshMaximized()
+  // 双击标题栏（drag-region）、Aero Snap 等原生触发的最大化不经过前端逻辑，
+  // 统一监听窗口 resize 事件刷新图标状态
+  try {
+    unlistenResize = await (win as any)?.onResized?.(() => {
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(refreshMaximized, 100)
+    })
+  } catch {
+    /* ignore */
+  }
+})
+
+onUnmounted(() => {
+  unlistenResize?.()
+  clearTimeout(resizeTimer)
 })
 
 async function minimize() {
@@ -27,7 +44,6 @@ async function minimize() {
 }
 async function toggleMaximize() {
   win?.toggleMaximize()
-  setTimeout(refreshMaximized, 200)
 }
 async function close() {
   win?.close()
