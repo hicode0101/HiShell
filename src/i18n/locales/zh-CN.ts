@@ -607,7 +607,11 @@ export default {
   activity: {
     title: 'AI 操作动态',
     empty: '暂无 AI 操作',
+    copyAll: '复制全部',
+    copiedToast: '已复制 {count} 条操作记录',
     clear: '清空',
+    clearConfirmTitle: '清空 AI 操作动态',
+    clearConfirmMessage: '确定要清空全部 AI 操作记录吗？此操作不可恢复。',
     sumListSessions: '查看授权会话列表',
     sumConnect: '连接「{name}」',
     sumDisconnect: '断开「{name}」',

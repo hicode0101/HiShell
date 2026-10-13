@@ -604,7 +604,11 @@ export default {
   activity: {
     title: 'AI Activity',
     empty: 'No AI activity yet',
+    copyAll: 'Copy all',
+    copiedToast: 'Copied {count} entries',
     clear: 'Clear',
+    clearConfirmTitle: 'Clear AI Activity',
+    clearConfirmMessage: 'Clear all AI activity entries? This cannot be undone.',
     sumListSessions: 'List authorized sessions',
     sumConnect: 'Connect "{name}"',
     sumDisconnect: 'Disconnect "{name}"',

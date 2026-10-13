@@ -4,13 +4,14 @@
  * 仅当 MCP 服务运行中且设置「实时显示 AI 操作」开启时渲染；服务一停面板即时隐藏。
  * 悬浮于主窗口右下角、状态栏之上。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
-import { useMcpActivityStore } from '../stores/mcpActivity'
+import { useMcpActivityStore, type McpActivityEntry } from '../stores/mcpActivity'
 import { useMcpServerStore } from '../stores/mcpServer'
 import { useProfilesStore } from '../stores/profiles'
 import { isTauri } from '../api/adapter'
 import { t } from '../i18n'
+import { FConfirmDialog, FIcon, toast } from '../ui'
 
 const settings = useSettingsStore()
 const activity = useMcpActivityStore()
@@ -18,6 +19,8 @@ const mcpServer = useMcpServerStore()
 const profiles = useProfilesStore()
 
 const visible = computed(() => isTauri && mcpServer.running && settings.s.mcpShowActivity)
+
+const clearOpen = ref(false)
 
 function timeStr(ts: number): string {
   const d = new Date(ts)
@@ -67,6 +70,32 @@ function msStr(ms?: number): string {
   if (ms === undefined) return ''
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
 }
+
+/** 单条记录转一行文本（复制用）：[时间] 状态 摘要 (耗时)，出错另起一行 */
+function entryText(e: McpActivityEntry): string {
+  const state = e.ok === undefined ? '▶' : e.ok ? '✓' : '✗'
+  const ms = e.ms !== undefined ? ` (${msStr(e.ms)})` : ''
+  const line = `[${timeStr(e.ts)}] ${state} ${summarize(e)}${ms}`
+  return e.error ? `${line}\n  ${e.error}` : line
+}
+
+/** 复制全部记录到剪贴板（writeText 失败时回退 execCommand） */
+async function copyAll() {
+  const text = activity.entries.map(entryText).join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    ta.remove()
+  }
+  toast(t('activity.copiedToast', { count: activity.entries.length }), 'success')
+}
 </script>
 
 <template>
@@ -76,9 +105,14 @@ function msStr(ms?: number): string {
       <span class="mcp-panel-title">{{ t('activity.title') }}</span>
       <span class="mcp-panel-count">{{ activity.entries.length }}</span>
       <span class="mcp-panel-spacer" />
-      <button v-if="!activity.collapsed && activity.entries.length" class="mcp-panel-btn" @click.stop="activity.clear()">
-        {{ t('activity.clear') }}
-      </button>
+      <template v-if="!activity.collapsed && activity.entries.length">
+        <button class="mcp-panel-icon-btn" :title="t('activity.copyAll')" @click.stop="copyAll">
+          <FIcon name="copy" :size="14" />
+        </button>
+        <button class="mcp-panel-icon-btn" :title="t('activity.clear')" @click.stop="clearOpen = true">
+          <FIcon name="trash" :size="14" />
+        </button>
+      </template>
       <span class="mcp-panel-chev">{{ activity.collapsed ? '▲' : '▼' }}</span>
     </div>
     <div v-if="!activity.collapsed" class="mcp-panel-body">
@@ -95,6 +129,14 @@ function msStr(ms?: number): string {
         <span v-if="e.ok !== undefined" class="mcp-item-ms">{{ msStr(e.ms) }}</span>
       </div>
     </div>
+    <!-- 清空二次确认，防止误点 -->
+    <FConfirmDialog
+      v-model:open="clearOpen"
+      :title="t('activity.clearConfirmTitle')"
+      :message="t('activity.clearConfirmMessage')"
+      :confirm-text="t('activity.clear')"
+      @confirm="activity.clear()"
+    />
   </div>
 </template>
 
@@ -149,16 +191,20 @@ function msStr(ms?: number): string {
 .mcp-panel-spacer {
   flex: 1;
 }
-.mcp-panel-btn {
+.mcp-panel-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   border: none;
   background: none;
   color: var(--text-tertiary);
-  font-size: 12px;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 0;
   border-radius: var(--radius-sm);
 }
-.mcp-panel-btn:hover {
+.mcp-panel-icon-btn:hover {
   color: var(--text-primary);
   background: var(--bg-alt-pressed);
 }
