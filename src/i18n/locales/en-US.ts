@@ -134,6 +134,8 @@ export default {
     confirmDelete: 'Delete local terminal session "{name}"? This cannot be undone.',
     copiedToast: 'Duplicated as "{name}"',
     openTerminal: 'Open local terminal',
+    openFolder: 'Open containing folder',
+    folderEmpty: 'No working directory set for this session',
   },
 
   userKeys: {

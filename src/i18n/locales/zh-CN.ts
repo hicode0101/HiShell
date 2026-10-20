@@ -134,6 +134,8 @@ export default {
     confirmDelete: '确定要删除本地终端会话「{name}」吗？该操作不可恢复。',
     copiedToast: '已复制为「{name}」',
     openTerminal: '打开本地终端',
+    openFolder: '打开所在文件夹',
+    folderEmpty: '该会话未设置工作路径',
   },
 
   userKeys: {

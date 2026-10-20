@@ -2,13 +2,13 @@
 /**
  * 本地终端会话管理器：会话名 + 默认工作路径。
  * 单击选中行，双击行或点击终端图标按配置路径开启本地终端；
- * 支持 拖动排序 / 编辑 / 复制 / 删除（与 SSH 会话管理器交互一致）。
+ * 支持 拖动排序 / 打开目录 / 编辑 / 复制 / 删除（与 SSH 会话管理器交互一致）。
  * 配置整表存配置目录 local_terminals.json，改动即保存。
  */
 import { computed, ref, watch } from 'vue'
 import { FButton, FConfirmDialog, FDialog, toast } from '../ui'
 import { isTauri } from '../api/adapter'
-import { localSessionList, localSessionSave } from '../api/backend'
+import { localSessionList, localSessionSave, openPath } from '../api/backend'
 import type { LocalTermSession } from '../api/types'
 import { useSessionsStore } from '../stores/sessions'
 import { t } from '../i18n'
@@ -57,6 +57,20 @@ function newId(): string {
 function openTerminal(s: LocalTermSession) {
   sessions.createLocalTab({ name: s.name, path: s.path || undefined })
   emit('update:open', false)
+}
+
+/** 在系统文件管理器中打开工作目录（explorer / Finder / xdg-open 由后端按平台分发） */
+async function openFolder(s: LocalTermSession) {
+  const path = s.path.trim()
+  if (!path) {
+    toast(t('localSessions.folderEmpty'), 'info')
+    return
+  }
+  try {
+    await openPath(path)
+  } catch (e) {
+    toast(String(e), 'error')
+  }
 }
 
 /* ---------- 行拖拽排序（行首把手，鼠标模拟；与 SSH 会话管理器一致） ---------- */
@@ -204,6 +218,11 @@ async function confirmRemove() {
           <button class="lts-ic-btn connect" :title="t('localSessions.openTerminal')" @click="openTerminal(row)">
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
               <rect x="3" y="4.5" width="14" height="11" rx="1.5" /><path d="M6.5 8l2.8 2.3-2.8 2.3M11.2 13h3" />
+            </svg>
+          </button>
+          <button class="lts-ic-btn folder" :title="t('localSessions.openFolder')" @click="openFolder(row)">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3.5 15.3V5c0-.44.36-.8.8-.8h4.2l1.6 1.8h5.6c.44 0 .8.36.8.8v8.5c0 .44-.36.8-.8.8H4.3c-.44 0-.8-.36-.8-.8z" />
             </svg>
           </button>
           <button class="lts-ic-btn edit" :title="t('common.edit')" @click="openEdit(row)">
@@ -367,6 +386,9 @@ async function confirmRemove() {
 .lts-ic-btn.connect:hover {
   background: var(--accent);
   filter: brightness(1.12);
+}
+.lts-ic-btn.folder:hover {
+  color: var(--accent);
 }
 .lts-ic-btn.edit:hover {
   color: var(--warning);
