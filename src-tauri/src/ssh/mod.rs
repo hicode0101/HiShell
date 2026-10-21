@@ -598,7 +598,7 @@ pub async fn expand_entries(
                     if name == "." || name == ".." {
                         continue;
                     }
-                    let child = format!("{}/{}", remote_path.trim_end_matches('/'), name);
+                    let child = format!("{}/{}", dir.trim_end_matches('/'), name);
                     let is_child_dir = e.metadata().is_dir();
                     if is_child_dir {
                         stack.push(child);
