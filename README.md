@@ -160,6 +160,11 @@ build.bat check     :: 仅类型检查 + cargo check
 npm run tauri build   # 手动完整打包
 npm run build         # 仅前端产物 dist/
 npm run typecheck     # vue-tsc 类型检查
+
+pnpm install            # 安装前端依赖
+pnpm tauri dev          # 开发运行（vite dev server + tauri）
+pnpm tauri build --no-bundle  # 只编译主程序不打包安装包
+
 ```
 
 ### 自动打包发布（GitHub Actions）

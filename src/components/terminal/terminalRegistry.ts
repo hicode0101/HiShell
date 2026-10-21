@@ -101,23 +101,31 @@ function pickTermTheme(scheme: 'dark' | 'light' | 'followApp'): ReturnType<typeo
  * 不能依赖 WebView 原生复制：xterm 无真实 DOM 选区（原生 copy 事件无内容），
  * WKWebView/WebKitGTK 也不保证把粘贴组合键转成隐藏 textarea 的 paste 事件，
  * 因此两个方向都显式走剪贴板 API。
+ * 注意：返回 false 只阻止 xterm 自己处理按键，不会阻止浏览器默认动作——
+ * 必须 preventDefault() 掐掉 WebView2 对 Ctrl+Shift+V/C 的原生 copy/paste，
+ * 否则原生路径（立即）+ 下面的异步剪贴板读取（迟到）会各粘一次。
  */
 function terminalClipboardKeys(term: Terminal, ev: KeyboardEvent): boolean {
   if (ev.type !== 'keydown') return true
   const key = ev.key.toLowerCase()
   if (ev.ctrlKey && ev.shiftKey && (key === 'c' || ev.code === 'KeyC')) {
+    ev.preventDefault()
     if (term.hasSelection()) {
       navigator.clipboard.writeText(term.getSelection()).catch(() => {})
     }
     return false
   }
   if (ev.ctrlKey && ev.shiftKey && (key === 'v' || ev.code === 'KeyV')) {
-    navigator.clipboard
-      .readText()
-      .then((text) => {
-        if (text) term.input(text)
-      })
-      .catch(() => {})
+    ev.preventDefault()
+    // 忽略按住不放的系统自动重复，避免连发粘贴
+    if (!ev.repeat) {
+      navigator.clipboard
+        .readText()
+        .then((text) => {
+          if (text) term.input(text)
+        })
+        .catch(() => {})
+    }
     return false
   }
   return true
