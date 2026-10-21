@@ -49,7 +49,7 @@ fn map_entry(e: &DirEntry) -> RemoteEntry {
 pub async fn sftp_list(sessions: tauri::State<'_, Sessions>, sid: u32, path: String) -> Result<Vec<RemoteEntry>, String> {
     let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
     let sftp = ssh::get_sftp(&session).await.map_err(|e| e.to_string())?;
-    let entries = sftp.read_dir(&path).await.map_err(|e| e.to_string())?;
+    let entries = sftp.read_dir(&path).await.map_err(|e| ssh::sftp_error("读取目录", &path, e))?;
     Ok(entries.into_iter().map(|e| map_entry(&e)).collect())
 }
 
@@ -57,7 +57,11 @@ pub async fn sftp_list(sessions: tauri::State<'_, Sessions>, sid: u32, path: Str
 pub async fn sftp_mkdir(sessions: tauri::State<'_, Sessions>, sid: u32, path: String) -> Result<(), String> {
     let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
     let sftp = ssh::get_sftp(&session).await.map_err(|e| e.to_string())?;
-    sftp.create_dir(&path).await.map_err(|e| e.to_string())
+    // 预检同名：SFTP 对已存在条目返回的是通用 Failure，无法区分原因，这里直接给出准确提示
+    if sftp.metadata(&path).await.is_ok() {
+        return Err(format!("创建文件夹失败: {path}: 已存在同名文件或文件夹"));
+    }
+    sftp.create_dir(&path).await.map_err(|e| ssh::sftp_error("创建文件夹", &path, e))
 }
 
 /// 删除文件/目录（目录递归）
@@ -65,10 +69,10 @@ pub async fn sftp_mkdir(sessions: tauri::State<'_, Sessions>, sid: u32, path: St
 pub async fn sftp_rm(sessions: tauri::State<'_, Sessions>, sid: u32, path: String) -> Result<(), String> {
     let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
     let sftp = ssh::get_sftp(&session).await.map_err(|e| e.to_string())?;
-    let meta = sftp.metadata(&path).await.map_err(|e| e.to_string())?;
+    let meta = sftp.metadata(&path).await.map_err(|e| ssh::sftp_error("删除", &path, e))?;
     if meta.is_dir() {
         // 递归删除
-        let entries = sftp.read_dir(&path).await.map_err(|e| e.to_string())?;
+        let entries = sftp.read_dir(&path).await.map_err(|e| ssh::sftp_error("删除", &path, e))?;
         for e in entries {
             let name = e.file_name();
             if name == "." || name == ".." {
@@ -77,29 +81,29 @@ pub async fn sftp_rm(sessions: tauri::State<'_, Sessions>, sid: u32, path: Strin
             let child = format!("{}/{}", path.trim_end_matches('/'), name);
             let is_dir = e.metadata().is_dir();
             if is_dir {
-                delete_recursive(sftp.clone(), child).await.map_err(|e| e.to_string())?;
+                delete_recursive(sftp.clone(), child).await?;
             } else {
-                sftp.remove_file(&child).await.map_err(|e| e.to_string())?;
+                sftp.remove_file(&child).await.map_err(|e| ssh::sftp_error("删除", &child, e))?;
             }
         }
-        sftp.remove_dir(&path).await.map_err(|e| e.to_string())
+        sftp.remove_dir(&path).await.map_err(|e| ssh::sftp_error("删除", &path, e))
     } else {
-        sftp.remove_file(&path).await.map_err(|e| e.to_string())
+        sftp.remove_file(&path).await.map_err(|e| ssh::sftp_error("删除", &path, e))
     }
 }
 
 fn delete_recursive(
     sftp: std::sync::Arc<russh_sftp::client::SftpSession>,
     dir: String,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), russh_sftp::client::error::Error>> + Send>> {
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>> {
     Box::pin(delete_recursive_impl(sftp, dir))
 }
 
 async fn delete_recursive_impl(
     sftp: std::sync::Arc<russh_sftp::client::SftpSession>,
     dir: String,
-) -> Result<(), russh_sftp::client::error::Error> {
-    let entries = sftp.read_dir(dir.clone()).await?;
+) -> Result<(), String> {
+    let entries = sftp.read_dir(dir.clone()).await.map_err(|e| ssh::sftp_error("删除", &dir, e))?;
     for e in entries {
         let name = e.file_name();
         if name == "." || name == ".." {
@@ -109,10 +113,10 @@ async fn delete_recursive_impl(
         if e.metadata().is_dir() {
             delete_recursive(sftp.clone(), child.clone()).await?;
         } else {
-            sftp.remove_file(&child).await?;
+            sftp.remove_file(&child).await.map_err(|e| ssh::sftp_error("删除", &child, e))?;
         }
     }
-    sftp.remove_dir(dir).await
+    sftp.remove_dir(&dir).await.map_err(|e| ssh::sftp_error("删除", &dir, e))
 }
 
 #[tauri::command]
@@ -124,7 +128,12 @@ pub async fn sftp_rename(
 ) -> Result<(), String> {
     let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
     let sftp = ssh::get_sftp(&session).await.map_err(|e| e.to_string())?;
-    sftp.rename(&path, &new_path).await.map_err(|e| e.to_string())
+    // 预检目标已存在：SFTP rename 不覆盖同名条目，返回的通用 Failure 无法区分原因
+    // （仅大小写变更时目标即源自身，跳过预检，避免在大小写不敏感的服务器上误报）
+    if !new_path.eq_ignore_ascii_case(&path) && sftp.metadata(&new_path).await.is_ok() {
+        return Err(format!("重命名失败: {new_path}: 目标路径已存在"));
+    }
+    sftp.rename(&path, &new_path).await.map_err(|e| ssh::sftp_error("重命名", &path, e))
 }
 
 #[tauri::command]
@@ -173,7 +182,7 @@ pub async fn sftp_mkdirs(sessions: tauri::State<'_, Sessions>, sid: u32, paths: 
         for seg in p.split('/').filter(|s| !s.is_empty()) {
             partial = format!("{}/{}", partial.trim_end_matches('/'), seg);
             if sftp.metadata(&partial).await.is_err() {
-                sftp.create_dir(&partial).await.map_err(|e| e.to_string())?;
+                sftp.create_dir(&partial).await.map_err(|e| ssh::sftp_error("创建目录", &partial, e))?;
             }
         }
     }
@@ -216,7 +225,7 @@ async fn chmod_recursive_impl(
     recursive: bool,
 ) -> Result<u32, String> {
     // SFTP SETSTAT 的 permissions 携带完整 st_mode：保留原类型位，仅替换权限位
-    let meta = sftp.metadata(&path).await.map_err(|e| format!("读取属性失败: {e}"))?;
+    let meta = sftp.metadata(&path).await.map_err(|e| ssh::sftp_error("读取属性", &path, e))?;
     let type_bits = meta.permissions.unwrap_or(0o100000) & 0o170000;
     let attrs = russh_sftp::protocol::FileAttributes {
         permissions: Some(type_bits | (mode & 0o7777)),
@@ -224,10 +233,10 @@ async fn chmod_recursive_impl(
     };
     sftp.set_metadata(&path, attrs)
         .await
-        .map_err(|e| format!("更改权限失败: {e}"))?;
+        .map_err(|e| ssh::sftp_error("更改权限", &path, e))?;
     let mut count = 1u32;
     if recursive && meta.is_dir() {
-        let entries = sftp.read_dir(&path).await.map_err(|e| format!("读取目录失败: {e}"))?;
+        let entries = sftp.read_dir(&path).await.map_err(|e| ssh::sftp_error("读取目录", &path, e))?;
         for e in entries {
             let name = e.file_name();
             if name == "." || name == ".." {
@@ -373,7 +382,7 @@ pub async fn sftp_read_file(
 ) -> Result<RemoteFileContent, String> {
     let Some(session) = sessions.0.get(sid) else { return Err("会话不存在".into()) };
     let sftp = ssh::get_sftp(&session).await.map_err(|e| e.to_string())?;
-    let meta = sftp.metadata(&path).await.map_err(|e| format!("读取文件属性失败: {e}"))?;
+    let meta = sftp.metadata(&path).await.map_err(|e| ssh::sftp_error("读取文件", &path, e))?;
     if meta.is_dir() {
         return Err("无法编辑文件夹".into());
     }
@@ -382,7 +391,7 @@ pub async fn sftp_read_file(
         return Err(format!("文件过大（约 {} MB），不支持在线编辑（上限 10 MB）", size / 1024 / 1024));
     }
     use tokio::io::AsyncReadExt;
-    let mut file = sftp.open(&path).await.map_err(|e| format!("打开远程文件失败: {e}"))?;
+    let mut file = sftp.open(&path).await.map_err(|e| ssh::sftp_error("打开远程文件", &path, e))?;
     let mut bytes: Vec<u8> = Vec::with_capacity(size.min(EDIT_MAX_SIZE) as usize + 1);
     // take() 防御属性谎报/文件在读取期间被追加，避免内存失控
     (&mut file).take(EDIT_MAX_SIZE + 1).read_to_end(&mut bytes).await
@@ -418,7 +427,7 @@ pub async fn sftp_write_file(
     let mut remote = sftp
         .open_with_flags(&path, OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE)
         .await
-        .map_err(|e| format!("打开远程文件失败: {e}"))?;
+        .map_err(|e| ssh::sftp_error("保存远程文件", &path, e))?;
     remote.write_all(&bytes).await.map_err(|e| format!("写入远程文件失败: {e}"))?;
     let _ = remote.shutdown().await;
     Ok(bytes.len() as u64)

@@ -163,6 +163,8 @@ export interface TransferItem {
   startedAt: number
   elapsedMs: number
   status: TransferStatus
+  /** 失败原因（transfer-done 事件携带，队列行悬停展示） */
+  error?: string
   /** 所属会话（断点续传重试时需要重新入队） */
   sid?: number
 }

@@ -339,6 +339,41 @@ pub async fn get_sftp(session: &Arc<SessionHandle>) -> AppResult<Arc<SftpSession
     Ok(arc)
 }
 
+/// 把 russh-sftp 错误翻译成「操作 + 路径 + 可读原因」。
+/// 协议状态包的原始消息只有 "Failure" 这类短语，直接透传用户无从判断，
+/// 这里按状态码映射为中文，服务器附带不同说明时一并保留。
+pub fn sftp_error(op: &str, path: &str, e: russh_sftp::client::error::Error) -> String {
+    use russh_sftp::client::error::Error as SftpError;
+    use russh_sftp::protocol::StatusCode;
+    let reason = match &e {
+        SftpError::Status(s) => {
+            let base = match s.status_code {
+                StatusCode::NoSuchFile => "文件或目录不存在",
+                StatusCode::PermissionDenied => "权限不足",
+                StatusCode::Failure => "服务器拒绝操作（常见原因：同名条目已存在、权限不足或路径不合法）",
+                StatusCode::BadMessage => "协议错误（报文格式不合法）",
+                StatusCode::OpUnsupported => "服务器不支持该操作",
+                StatusCode::NoConnection => "SFTP 通道无连接",
+                StatusCode::ConnectionLost => "SFTP 通道连接已断开",
+                StatusCode::Eof => "意外的文件末尾",
+                StatusCode::Ok => "服务器返回成功状态但操作未生效",
+            };
+            // OpenSSH 对 Failure/Permission denied 只回传与码名相同的短语，重复展示没有信息量；
+            // 服务器附带了不同说明时才追加
+            let msg = s.error_message.trim();
+            let code_text = s.status_code.to_string();
+            if !msg.is_empty() && !msg.eq_ignore_ascii_case(&code_text) {
+                format!("{base}（服务器: {msg}）")
+            } else {
+                base.to_string()
+            }
+        }
+        SftpError::Timeout => "服务器响应超时".to_string(),
+        _ => e.to_string(),
+    };
+    format!("{op}失败: {path}: {reason}")
+}
+
 /* ---------------- 传输引擎 ---------------- */
 
 #[derive(Debug, Clone, Serialize)]
@@ -479,7 +514,7 @@ async fn transfer_loop(
         } else {
             OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE
         };
-        let mut remote = sftp.open_with_flags(remote_path, flags).await.map_err(|e| AppError::msg(format!("打开远程文件失败: {e}")))?;
+        let mut remote = sftp.open_with_flags(remote_path, flags).await.map_err(|e| AppError::msg(sftp_error("打开远程文件", remote_path, e)))?;
         if start_offset > 0 {
             remote.seek(std::io::SeekFrom::Start(start_offset)).await.map_err(|e| AppError::msg(format!("远端 seek 失败: {e}")))?;
         }
@@ -499,7 +534,7 @@ async fn transfer_loop(
         let _ = remote.shutdown().await;
     } else {
         use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
-        let mut remote = sftp.open(remote_path).await.map_err(|e| AppError::msg(format!("打开远程文件失败: {e}")))?;
+        let mut remote = sftp.open(remote_path).await.map_err(|e| AppError::msg(sftp_error("打开远程文件", remote_path, e)))?;
         // 断点续传：本地已有部分文件（0 < local < 远端大小）时从该偏移继续
         let mut start_offset: u64 = 0;
         if resume {
@@ -592,7 +627,7 @@ pub async fn expand_entries(
         if is_dir {
             let mut stack = vec![remote_path.to_string()];
             while let Some(dir) = stack.pop() {
-                let entries = sftp.read_dir(&dir).await.map_err(|e| AppError::msg(format!("读取目录失败: {e}")))?;
+                let entries = sftp.read_dir(&dir).await.map_err(|e| AppError::msg(sftp_error("读取目录", &dir, e)))?;
                 for e in entries {
                     let name = e.file_name();
                     if name == "." || name == ".." {

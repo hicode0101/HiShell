@@ -96,6 +96,8 @@ export const useTransfersStore = defineStore('transfers', {
         this.log(t('transfer.log.cancelled', { name: it.name }), 'error')
       } else {
         it.status = 'failed'
+        // 失败原因保留在条目上，队列行状态列悬停可见
+        it.error = error
         this.log(`${it.name}: ${error ?? 'unknown'}`, 'error')
       }
     },
@@ -235,6 +237,7 @@ export const useTransfersStore = defineStore('transfers', {
         old.speed = 0
         old.startedAt = Date.now()
         old.elapsedMs = 0
+        old.error = undefined
         this.log(t('transfer.log.resuming', { name: old.name }), 'info')
       } catch (e) {
         this.log(`${old.name}: ${String(e)}`, 'error')

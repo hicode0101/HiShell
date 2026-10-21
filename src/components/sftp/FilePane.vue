@@ -807,6 +807,14 @@ function rowContextMenu(e: MouseEvent, entry: DirEntry) {
         ]
       : []),
     { separator: true },
+    // 新建文件夹作用于当前目录，与右键目标条目无关（'..'、盘符行上同样可用）
+    {
+      label: t('sftp.newFolder'),
+      icon: 'folder',
+      // 本地「此电脑」视图下没有当前目录，禁用以免按相对路径建错位置
+      disabled: !path.value || (props.side === 'remote' && props.session?.status !== 'connected'),
+      onClick: () => openNewFolder(),
+    },
     ...(multi ? [] : [{ label: t('sftp.props'), icon: 'info', onClick: () => openProps(entry) }]),
   ])
 }
@@ -828,7 +836,8 @@ function paneContextMenu(e: MouseEvent) {
     {
       label: t('sftp.newFolder'),
       icon: 'folder',
-      disabled: props.side === 'remote' && props.session?.status !== 'connected',
+      // 本地「此电脑」视图下没有当前目录，禁用以免按相对路径建错位置
+      disabled: !path.value || (props.side === 'remote' && props.session?.status !== 'connected'),
       onClick: () => openNewFolder(),
     },
     { separator: true },
@@ -1238,6 +1247,7 @@ defineExpose({
       :open="dialog === 'rename' || dialog === 'newFolder'"
       :title="dialog === 'rename' ? t('sftp.rename') : t('sftp.newFolder')"
       :width="420"
+      autofocus-select
       @update:open="(v: boolean) => (!v && (dialog = null))"
     >
       <FTextBox

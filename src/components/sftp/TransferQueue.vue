@@ -86,7 +86,7 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
               <svg v-else width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--success)" stroke-width="1.5" stroke-linecap="round"><path d="M10 3.5v9M6.2 9.3l3.8 3.7 3.8-3.7M4.5 16.5h11" /></svg>
               {{ it.name }}
             </span>
-            <span class="col-status" :class="it.status">{{ statusLabel[it.status] }}</span>
+            <span class="col-status" :class="it.status" :title="it.error">{{ statusLabel[it.status] }}</span>
             <span class="col-progress">
               <FProgressBar :value="(it.transferred / it.total) * 100" :paused="it.status === 'paused'" />
               <span class="pct">{{ Math.round((it.transferred / it.total) * 100) }}%</span>

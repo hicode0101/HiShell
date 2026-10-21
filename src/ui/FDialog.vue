@@ -8,8 +8,10 @@ const props = withDefaults(
     width?: number
     /** 打开时按回车触发 confirm（用于删除确认等无输入框的对话框） */
     enterConfirm?: boolean
+    /** 打开时聚焦首个文本输入框并全选（重命名/新建类：键入直接替换预填内容） */
+    autofocusSelect?: boolean
   }>(),
-  { width: 560, enterConfirm: false },
+  { width: 560, enterConfirm: false, autofocusSelect: false },
 )
 
 const emit = defineEmits<{
@@ -48,8 +50,26 @@ watch(
     if (typeof document === 'undefined') return
     if (v) {
       document.addEventListener('keydown', onKeydown)
-      // 打开时把焦点移入对话框面板：否则焦点残留在打开对话框的按钮上，回车会再次激活该按钮而非确认对话框
-      nextTick(() => panelEl.value?.focus())
+      // 打开时把焦点移入对话框：优先首个可见、可编辑的文本输入框（键盘直接键入，无需再点一下），
+      // 没有合适输入框时聚焦面板本身：否则焦点残留在打开对话框的按钮上，回车会再次激活该按钮而非确认对话框
+      nextTick(() => {
+        const panel = panelEl.value
+        if (!panel) return
+        const selector =
+          'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="file"]), textarea'
+        for (const el of panel.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(selector)) {
+          if (el.disabled || el.readOnly || !el.offsetParent) continue
+          el.focus()
+          try {
+            if (props.autofocusSelect) el.select()
+            else el.setSelectionRange(el.value.length, el.value.length)
+          } catch {
+            /* number/email 等类型不支持选区 API，忽略 */
+          }
+          return
+        }
+        panel.focus()
+      })
     } else {
       document.removeEventListener('keydown', onKeydown)
     }
