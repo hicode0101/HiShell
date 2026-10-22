@@ -26,6 +26,46 @@ function close() {
   emit('update:open', false)
 }
 
+/* ---------- 标题栏拖动 ---------- */
+
+const dragOffset = ref({ x: 0, y: 0 })
+// 拖动中：指针起点、位移基准与拖动开始时面板包围盒（已含当前位移），用于把对话框钳制在视口内
+let drag: { px: number; py: number; ox: number; oy: number; rect: DOMRect } | null = null
+
+function onTitlePointerdown(e: PointerEvent) {
+  if (e.button !== 0 || !panelEl.value) return
+  // 标题栏内嵌的交互元素（title-extra 插槽）点击时不拖动
+  if ((e.target as HTMLElement).closest('button, input, textarea, select, a, [contenteditable]')) return
+  drag = {
+    px: e.clientX,
+    py: e.clientY,
+    ox: dragOffset.value.x,
+    oy: dragOffset.value.y,
+    rect: panelEl.value.getBoundingClientRect(),
+  }
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  e.preventDefault()
+}
+
+function onTitlePointermove(e: PointerEvent) {
+  if (!drag) return
+  // 对话框尺寸本身不超过视口减 48px，钳位后始终完整可见
+  dragOffset.value = {
+    x: Math.min(Math.max(drag.ox + e.clientX - drag.px, -drag.rect.left), window.innerWidth - drag.rect.right),
+    y: Math.min(Math.max(drag.oy + e.clientY - drag.py, -drag.rect.top), window.innerHeight - drag.rect.bottom),
+  }
+}
+
+function onTitlePointerup(e: PointerEvent) {
+  if (!drag) return
+  try {
+    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  } catch {
+    /* 指针捕获已释放，忽略 */
+  }
+  drag = null
+}
+
 function onKeydown(e: KeyboardEvent) {
   // 多层对话框叠开时，Esc 只关闭最上层（DOM 中最后一个打开的遮罩）
   if (e.key === 'Escape' && props.open) {
@@ -49,6 +89,8 @@ watch(
   (v) => {
     if (typeof document === 'undefined') return
     if (v) {
+      // 重新打开时回到屏幕居中位置
+      dragOffset.value = { x: 0, y: 0 }
       document.addEventListener('keydown', onKeydown)
       // 打开时把焦点移入对话框：优先首个可见、可编辑的文本输入框（键盘直接键入，无需再点一下），
       // 没有合适输入框时聚焦面板本身：否则焦点残留在打开对话框的按钮上，回车会再次激活该按钮而非确认对话框
@@ -80,8 +122,21 @@ watch(
 <template>
   <Teleport to="body">
     <div v-if="open" ref="overlayEl" class="f-dialog-overlay">
-      <div ref="panelEl" class="f-dialog" :style="{ width: width + 'px' }" role="dialog" aria-modal="true" tabindex="-1">
-        <div class="f-dialog-title">
+      <div
+        ref="panelEl"
+        class="f-dialog"
+        :style="{ width: width + 'px', transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` }"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+      >
+        <div
+          class="f-dialog-title"
+          @pointerdown="onTitlePointerdown"
+          @pointermove="onTitlePointermove"
+          @pointerup="onTitlePointerup"
+          @pointercancel="onTitlePointerup"
+        >
           <span>{{ title }}</span>
           <slot name="title-extra" />
         </div>
@@ -130,6 +185,9 @@ watch(
   font-weight: 600;
   padding: 18px 24px 8px;
   color: var(--text-primary);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
 }
 .f-dialog-body {
   padding: 8px 24px 16px;
