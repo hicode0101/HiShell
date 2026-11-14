@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useTransfersStore } from '../../stores/transfers'
 import { formatBytes, formatSpeed, formatDuration } from '../../utils/format'
 import { FProgressBar, showContextMenu, useColResize } from '../../ui'
@@ -24,9 +24,50 @@ const statusLabel = computed<Record<TransferItem['status'], string>>(() => ({
   failed: t('transfer.status.failed'),
 }))
 
-const items = computed(() => transfers.items)
 const eta = (it: TransferItem) =>
   it.speed > 0 ? formatDuration(((it.total - it.transferred) / it.speed) * 1000) : '--'
+
+/* ---------- 列头排序：点击 名称/状态/进度/大小 切换升序降序，未点击前保持入队顺序 ---------- */
+type TqSortKey = 'name' | 'status' | 'progress' | 'size'
+const sortKey = ref<TqSortKey | null>(null)
+const sortAsc = ref(true)
+
+function setSort(key: TqSortKey) {
+  if (sortKey.value === key) sortAsc.value = !sortAsc.value
+  else {
+    sortKey.value = key
+    sortAsc.value = true
+  }
+}
+
+/* 状态按生命周期排序：排队 → 传输中 → 已暂停 → 已完成 → 已取消 → 失败 */
+const statusRank: Record<TransferItem['status'], number> = {
+  queued: 0,
+  running: 1,
+  paused: 2,
+  done: 3,
+  cancelled: 4,
+  failed: 5,
+}
+
+const sortedItems = computed(() => {
+  if (!sortKey.value) return transfers.items
+  const dir = sortAsc.value ? 1 : -1
+  const list = [...transfers.items]
+  list.sort((a, b) => {
+    switch (sortKey.value) {
+      case 'name':
+        return a.name.localeCompare(b.name, 'zh-CN') * dir
+      case 'status':
+        return (statusRank[a.status] - statusRank[b.status]) * dir
+      case 'progress':
+        return (a.transferred / a.total - b.transferred / b.total) * dir
+      default:
+        return (a.total - b.total) * dir
+    }
+  })
+  return list
+})
 
 function itemMenu(e: MouseEvent, it: TransferItem) {
   showContextMenu(e, [
@@ -66,10 +107,10 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
       <template v-if="transfers.activeTab === 'transfer'">
         <div class="tq-scroll" :class="{ resizing: resizing >= 0 }">
           <div class="tq-head" :style="gridStyle">
-          <span class="col-name">{{ t('transfer.colName') }}<i class="tq-grip" @mousedown.stop="startResize(0, $event)" @click.stop /></span>
-          <span class="col-status">{{ t('transfer.colStatus') }}<i class="tq-grip" @mousedown.stop="startResize(1, $event)" @click.stop /></span>
-          <span class="col-progress">{{ t('transfer.colProgress') }}<i class="tq-grip" @mousedown.stop="startResize(2, $event)" @click.stop /></span>
-          <span class="col-size">{{ t('transfer.colSize') }}<i class="tq-grip" @mousedown.stop="startResize(3, $event)" @click.stop /></span>
+          <span class="col-name sortable" @click="setSort('name')">{{ t('transfer.colName') }}<span v-if="sortKey === 'name'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span><i class="tq-grip" @mousedown.stop="startResize(0, $event)" @click.stop /></span>
+          <span class="col-status sortable" @click="setSort('status')">{{ t('transfer.colStatus') }}<span v-if="sortKey === 'status'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span><i class="tq-grip" @mousedown.stop="startResize(1, $event)" @click.stop /></span>
+          <span class="col-progress sortable" @click="setSort('progress')">{{ t('transfer.colProgress') }}<span v-if="sortKey === 'progress'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span><i class="tq-grip" @mousedown.stop="startResize(2, $event)" @click.stop /></span>
+          <span class="col-size sortable" @click="setSort('size')">{{ t('transfer.colSize') }}<span v-if="sortKey === 'size'" class="sort-arrow">{{ sortAsc ? '▲' : '▼' }}</span><i class="tq-grip" @mousedown.stop="startResize(3, $event)" @click.stop /></span>
           <span class="col-local">{{ t('transfer.colLocal') }}<i class="tq-grip" @mousedown.stop="startResize(4, $event)" @click.stop /></span>
           <span class="col-arrow"></span>
           <span class="col-remote">{{ t('transfer.colRemote') }}<i class="tq-grip" @mousedown.stop="startResize(6, $event)" @click.stop /></span>
@@ -79,8 +120,8 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
           <span class="col-ops"></span>
         </div>
         <div class="tq-rows">
-          <div v-if="!items.length" class="tq-empty">{{ t('transfer.empty') }}</div>
-          <div v-for="it in items" :key="it.id" class="tq-row" :style="gridStyle" @contextmenu.prevent="itemMenu($event, it)">
+          <div v-if="!sortedItems.length" class="tq-empty">{{ t('transfer.empty') }}</div>
+          <div v-for="it in sortedItems" :key="it.id" class="tq-row" :style="gridStyle" @contextmenu.prevent="itemMenu($event, it)">
             <span class="col-name" :title="it.name">
               <svg v-if="it.direction === 'upload'" width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"><path d="M10 13.5v-10M6.2 6.7L10 3l3.8 3.7M4.5 16.5h11" /></svg>
               <svg v-else width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--success)" stroke-width="1.5" stroke-linecap="round"><path d="M10 3.5v9M6.2 9.3l3.8 3.7 3.8-3.7M4.5 16.5h11" /></svg>
@@ -205,6 +246,15 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
   white-space: nowrap;
   overflow: hidden;
 }
+.tq-head .sortable {
+  cursor: pointer;
+}
+.tq-head .sortable:hover {
+  color: var(--text-primary);
+}
+.sort-arrow {
+  font-size: 9px;
+}
 .tq-head > span:last-child {
   border-right: none;
 }
@@ -247,6 +297,7 @@ function itemMenu(e: MouseEvent, it: TransferItem) {
   color: var(--text-secondary);
   border-bottom: 1px solid var(--stroke-divider);
   flex: none;
+  user-select: none;
 }
 .tq-rows {
   flex: none;
