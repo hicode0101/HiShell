@@ -2,7 +2,7 @@
 
 # HiShell
 
-**一款工程师爱用的 SSH 终端工具 · Windows 11 Fluent Design**
+**一款工程师爱用的 SSH 终端工具 · Fluent Design**
 
 基于 **Tauri 2 + Rust + Vue 3 + xterm.js** 打造，对标 Xshell / Xftp / Tabby。
 
@@ -12,7 +12,7 @@
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Release](https://img.shields.io/badge/release-v1.0.2-005FB8)](../../releases)
 
-当前状态：**M1–M6 核心功能已实现** —— russh 真实连接、OS 钥匙串凭据、端口转发、SFTP 传输引擎
+russh 真实连接、OS 钥匙串凭据、端口转发、SFTP 传输引擎
 （断点续传）、用户密钥库、本地终端 PTY、Xshell / Tabby 会话导入、GitHub Actions 多平台自动发布，
 并新增 **MCP Server（AI 集成）** 与本地终端会话管理。
 
@@ -222,7 +222,6 @@ HiShell/
 
 ## 📚 文档
 
-- [docs/tabby-功能分析报告.md](docs/tabby-功能分析报告.md) —— Tabby 源码功能分析（SSH 连接 / 认证 / 端口转发 / SFTP / 配置系统）
 - [docs/hishell-设计方案.md](docs/hishell-设计方案.md) —— HiShell 架构设计、前后端通信协议、Fluent UI 规范、里程碑
 
 ## 🗺️ 里程碑
